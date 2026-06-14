@@ -1,0 +1,422 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  CONTESTANT
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum PaymentProvider {
+  PAYSTACK
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum ContestantStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ELIMINATED
+}
+
+enum CompetitionStatus {
+  DRAFT
+  PUBLISHED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum StageStatus {
+  UPCOMING
+  ACTIVE
+  VOTING_CLOSED
+  COMPLETED
+}
+
+enum SubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum VoteSource {
+  COIN
+  ONLINE_ENGAGEMENT
+  ITEM_PURCHASE
+}
+
+enum CoinTransactionType {
+  CREDIT
+  DEBIT
+  ADJUSTMENT
+}
+
+enum ContactMessageStatus {
+  NEW
+  READ
+  RESOLVED
+}
+
+enum EngagementPlatform {
+  TIKTOK
+  FACEBOOK
+  YOUTUBE
+  INSTAGRAM
+  OTHER
+}
+
+enum WinnerPlacement {
+  FIRST
+  SECOND
+  THIRD
+}
+
+model CoinPackage {
+  id         String   @id @default(cuid())
+  name       String
+  priceNaira Int
+  coins      Int
+  bonusCoins Int      @default(0)
+  isActive   Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  payments   Payment[]
+}
+
+model User {
+  id           String          @id @default(cuid())
+  name         String
+  email        String          @unique
+  phone        String?
+  passwordHash String
+  role         UserRole        @default(USER)
+  isActive     Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  competitions   Competition[]     @relation("CompetitionOwner")
+  contestants    Contestant[]
+  votes          Vote[]
+  coinWallet     CoinWallet?
+  payments       Payment[]
+  auditLogs      AdminAuditLog[]   @relation("AdminAuditActor")
+  coinTransactions CoinTransaction[]
+}
+
+model Competition {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  description String?
+  bannerUrl   String?
+  status      CompetitionStatus @default(DRAFT)
+  startDate   DateTime?
+  endDate     DateTime?
+  prizeFirst  String?
+  prizeSecond String?
+  prizeThird  String?
+  rules       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ownerId String?
+  owner   User?   @relation("CompetitionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  stages      Stage[]
+  contestants Contestant[]
+  votes       Vote[]
+  payments    Payment[]
+  winners     CompetitionWinner[]
+}
+
+model Stage {
+  id            String      @id @default(cuid())
+  title         String
+  description   String?
+  stageNumber   Int
+  status        StageStatus @default(UPCOMING)
+  submissionStartDate DateTime?
+  submissionEndDate   DateTime?
+  votingStartDate     DateTime?
+  votingEndDate       DateTime?
+  eliminationPercentage Int @default(30)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  competitionId String
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  votes         Vote[]
+  submissions   Submission[]
+  engagementBreakdowns EngagementBreakdown[]
+
+  @@unique([competitionId, stageNumber])
+}
+
+model Contestant {
+  id          String           @id @default(cuid())
+  displayName String
+  bio         String?
+  age         Int?
+  location    String?
+  guardianName String?
+  guardianPhone String?
+  status      ContestantStatus @default(PENDING)
+  isPremium   Boolean          @default(false)
+  premiumExpiresAt DateTime?
+  totalVotes  Int              @default(0)
+  totalOnlineEngagement Int    @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  userId        String?
+  user          User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  competitionId String
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  votes         Vote[]
+  submissions   Submission[]
+  engagementBreakdowns EngagementBreakdown[]
+  winnerPlacements CompetitionWinner[]
+
+  @@unique([competitionId, userId])
+}
+
+model Submission {
+  id             String           @id @default(cuid())
+  title          String
+  description    String?
+  videoUrl       String?
+  uploadUrl      String?
+  youtubeUrl     String?
+  youtubeVideoId String?
+  tiktokUrl      String?
+  facebookUrl    String?
+  instagramUrl   String?
+  externalVideoUrl String?
+  thumbnailUrl   String?
+  cloudinaryPublicId String?
+  cloudinarySecureUrl String?
+  uploadedFileMeta Json?
+  status         SubmissionStatus @default(PENDING)
+  adminNote      String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  contestantId String
+  contestant   Contestant @relation(fields: [contestantId], references: [id], onDelete: Cascade)
+  stageId      String
+  stage        Stage      @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  @@unique([contestantId, stageId])
+}
+
+model EngagementBreakdown {
+  id          String             @id @default(cuid())
+  views       Int                @default(0)
+  likes       Int                @default(0)
+  comments    Int                @default(0)
+  shares      Int                @default(0)
+  watchScore  Int                @default(0)
+  total       Int
+  platform    EngagementPlatform?
+  note        String?
+  createdAt   DateTime           @default(now())
+
+  contestantId String
+  contestant   Contestant         @relation(fields: [contestantId], references: [id], onDelete: Cascade)
+  stageId      String?
+  stage        Stage?             @relation(fields: [stageId], references: [id], onDelete: SetNull)
+}
+
+model CompetitionWinner {
+  id             String          @id @default(cuid())
+  placement      WinnerPlacement
+  prizeAmount    String?
+  totalVotes     Int
+  totalOnlineEngagement Int
+  engagementScore Float
+  tokenScore      Float
+  combinedScore   Float
+  declaredAt      DateTime        @default(now())
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  competitionId String
+  competition   Competition      @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  contestantId  String
+  contestant    Contestant       @relation(fields: [contestantId], references: [id], onDelete: Cascade)
+
+  @@unique([competitionId, placement])
+  @@unique([competitionId, contestantId])
+}
+
+model Vote {
+  id        String     @id @default(cuid())
+  source    VoteSource
+  quantity  Int        @default(1)
+  createdAt DateTime   @default(now())
+
+  userId        String?
+  user          User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  competitionId String
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  stageId       String?
+  stage         Stage?       @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  contestantId  String
+  contestant    Contestant   @relation(fields: [contestantId], references: [id], onDelete: Cascade)
+}
+
+model CoinWallet {
+  id        String   @id @default(cuid())
+  balance   Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId       String            @unique
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions CoinTransaction[]
+}
+
+model CoinTransaction {
+  id          String   @id @default(cuid())
+  amount      Int
+  type        CoinTransactionType
+  description String?
+  reference   String?  @unique
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  walletId String
+  wallet   CoinWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  userId   String?
+  user     User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model Payment {
+  id               String          @id @default(cuid())
+  provider         PaymentProvider @default(PAYSTACK)
+  reference        String          @unique
+  amountNaira      Int
+  coins            Int
+  bonusCoins       Int             @default(0)
+  totalCoins       Int
+  status           PaymentStatus   @default(PENDING)
+  providerResponse Json?
+  paidAt           DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coinPackageId String
+  coinPackage   CoinPackage @relation(fields: [coinPackageId], references: [id], onDelete: Restrict)
+  competitionId String?
+  competition   Competition? @relation(fields: [competitionId], references: [id], onDelete: SetNull)
+}
+
+model AdminAuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  entity    String?
+  entityId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  actorId String?
+  actor   User?   @relation("AdminAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+}
+
+model SiteSettings {
+  id             String   @id @default(cuid())
+  singletonKey   String   @unique @default("default")
+  siteName       String
+  siteTagline    String
+  aboutTitle     String
+  aboutContent   String
+  contactEmail   String
+  contactPhone   String
+  whatsappNumber String
+  facebookUrl    String
+  instagramUrl   String
+  tiktokUrl      String
+  youtubeUrl     String
+  termsUrl       String?
+  privacyUrl     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model HomepageContent {
+  id                    String   @id @default(cuid())
+  singletonKey          String   @unique @default("default")
+  heroTitle             String
+  heroSubtitle          String
+  heroImageUrl          String?
+  primaryCtaText        String
+  primaryCtaUrl         String
+  secondaryCtaText      String?
+  secondaryCtaUrl       String?
+  featuredCompetitionId String?
+  announcementText      String?
+  announcementIsActive  Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model Faq {
+  id        String   @id @default(cuid())
+  question  String
+  answer    String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Sponsor {
+  id         String   @id @default(cuid())
+  name       String
+  logoUrl    String?
+  websiteUrl String?
+  sortOrder  Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model CompetitionRules {
+  id           String   @id @default(cuid())
+  singletonKey String   @unique @default("default")
+  title        String
+  content      String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model ContactMessage {
+  id        String               @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  subject   String
+  message   String
+  status    ContactMessageStatus @default(NEW)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+}

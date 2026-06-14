@@ -1,0 +1,237 @@
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { ContestantStatus, UserRole } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateContestantDto } from './dto/create-contestant.dto';
+import { UpdateEngagementDto } from './dto/update-engagement.dto';
+import { UpdateContestantPremiumDto } from './dto/update-contestant-premium.dto';
+
+@Injectable()
+export class ContestantsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async register(userId: string, competitionId: string, dto: CreateContestantDto) {
+    const existing = await this.prisma.contestant.findUnique({
+      where: { competitionId_userId: { competitionId, userId } },
+    });
+
+    if (existing) {
+      throw new ConflictException(
+        'User already has a contestant profile for this competition',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const contestant = await tx.contestant.create({
+        data: {
+          ...dto,
+          userId,
+          competitionId,
+          status: ContestantStatus.PENDING,
+        },
+      });
+
+      await tx.user.updateMany({
+        where: { id: userId, role: UserRole.USER },
+        data: { role: UserRole.CONTESTANT },
+      });
+
+      return contestant;
+    });
+  }
+
+  findMine(userId: string) {
+    return this.prisma.contestant.findMany({
+      where: { userId },
+      include: { competition: true },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async findMineForCompetition(userId: string, competitionId: string) {
+    const contestant = await this.prisma.contestant.findUnique({
+      where: { competitionId_userId: { competitionId, userId } },
+      include: { competition: true },
+    });
+
+    if (!contestant) {
+      throw new NotFoundException('Contestant profile not found');
+    }
+
+    return contestant;
+  }
+
+  findAll() {
+    return this.prisma.contestant.findMany({
+      include: { user: true, competition: true },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async findOne(id: string) {
+    const contestant = await this.prisma.contestant.findUnique({
+      where: { id },
+      include: { user: true, competition: true },
+    });
+
+    if (!contestant) {
+      throw new NotFoundException('Contestant not found');
+    }
+
+    return contestant;
+  }
+
+  async findPublicProfile(id: string) {
+    const contestant = await this.prisma.contestant.findFirst({
+      where: {
+        id,
+        status: ContestantStatus.APPROVED,
+      },
+      include: {
+        competition: true,
+        submissions: {
+          where: { status: 'APPROVED' },
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
+        },
+      },
+    });
+
+    if (!contestant) {
+      throw new NotFoundException('Contestant not found');
+    }
+
+    const latestSubmission = contestant.submissions[0] ?? null;
+
+    return {
+      id: contestant.id,
+      displayName: contestant.displayName,
+      bio: contestant.bio,
+      age: contestant.age,
+      location: contestant.location,
+      status: contestant.status,
+      isPremium: contestant.isPremium,
+      premiumExpiresAt: contestant.premiumExpiresAt,
+      totalVotes: contestant.totalVotes,
+      totalOnlineEngagement: contestant.totalOnlineEngagement,
+      competition: contestant.competition,
+      latestApprovedSubmission: latestSubmission
+        ? {
+            id: latestSubmission.id,
+            title: latestSubmission.title,
+            description: latestSubmission.description,
+            videoUrl: latestSubmission.videoUrl,
+            uploadUrl: latestSubmission.uploadUrl,
+            youtubeUrl: latestSubmission.youtubeUrl,
+            tiktokUrl: latestSubmission.tiktokUrl,
+            facebookUrl: latestSubmission.facebookUrl,
+            instagramUrl: latestSubmission.instagramUrl,
+            externalVideoUrl: latestSubmission.externalVideoUrl,
+            thumbnailUrl: latestSubmission.thumbnailUrl,
+            cloudinarySecureUrl: latestSubmission.cloudinarySecureUrl,
+            createdAt: latestSubmission.createdAt,
+            updatedAt: latestSubmission.updatedAt,
+          }
+        : null,
+      shareTitle: `${contestant.displayName} - ${contestant.competition.title}`,
+      shareDescription:
+        contestant.bio ??
+        `Vote for ${contestant.displayName} in ${contestant.competition.title}`,
+      shareImageUrl: latestSubmission?.thumbnailUrl ?? contestant.competition.bannerUrl,
+      createdAt: contestant.createdAt,
+      updatedAt: contestant.updatedAt,
+    };
+  }
+
+  async updateStatus(id: string, status: ContestantStatus) {
+    await this.findOne(id);
+    return this.prisma.contestant.update({
+      where: { id },
+      data: { status },
+    });
+  }
+
+  async updatePremium(id: string, dto: UpdateContestantPremiumDto) {
+    await this.findOne(id);
+    return this.prisma.contestant.update({
+      where: { id },
+      data: {
+        isPremium: dto.isPremium,
+        premiumExpiresAt: dto.premiumExpiresAt
+          ? new Date(dto.premiumExpiresAt)
+          : null,
+      },
+    });
+  }
+
+  async updateEngagement(id: string, dto: UpdateEngagementDto, actorId: string) {
+    await this.findOne(id);
+    const totalEngagement = this.computeEngagementTotal(dto);
+
+    return this.prisma.$transaction(async (tx) => {
+      if (dto.stageId) {
+        const stage = await tx.stage.findUnique({ where: { id: dto.stageId } });
+        if (!stage) {
+          throw new NotFoundException('Stage not found');
+        }
+      }
+
+      const contestant = await tx.contestant.update({
+        where: { id },
+        data: {
+          totalOnlineEngagement: { increment: totalEngagement },
+        },
+      });
+
+      await tx.engagementBreakdown.create({
+        data: {
+          contestantId: id,
+          stageId: dto.stageId,
+          views: dto.views ?? 0,
+          likes: dto.likes ?? 0,
+          comments: dto.comments ?? 0,
+          shares: dto.shares ?? 0,
+          watchScore: dto.watchScore ?? 0,
+          total: totalEngagement,
+          platform: dto.platform,
+          note: dto.note,
+        },
+      });
+
+      await tx.adminAuditLog.create({
+        data: {
+          actorId,
+          action: 'ENGAGEMENT_UPDATE',
+          entity: 'Contestant',
+          entityId: id,
+          metadata: { ...dto },
+        },
+      });
+
+      return contestant;
+    });
+  }
+
+  private computeEngagementTotal(dto: UpdateEngagementDto) {
+    if (dto.onlineEngagementCount !== undefined) {
+      return dto.onlineEngagementCount;
+    }
+
+    const total =
+      (dto.views ?? 0) +
+      (dto.likes ?? 0) +
+      (dto.comments ?? 0) +
+      (dto.shares ?? 0) +
+      (dto.watchScore ?? 0);
+
+    if (total < 0) {
+      throw new BadRequestException('Engagement total cannot be negative');
+    }
+
+    return total;
+  }
+}
