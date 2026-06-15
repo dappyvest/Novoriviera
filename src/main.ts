@@ -6,12 +6,16 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
   const configService = app.get(ConfigService);
-  const frontendUrl = configService.get<string>('APP_FRONTEND_URL');
+  const frontendUrls = configService
+  .get<string>('APP_FRONTEND_URL', '')
+  .split(',')
+  .map((url) => url.trim())
+  .filter(Boolean);
 
-  app.enableCors({
-    origin: frontendUrl ? [frontendUrl] : true,
-    credentials: true,
-  });
+app.enableCors({
+  origin: frontendUrls.length > 0 ? frontendUrls : true,
+  credentials: true,
+});
   app.setGlobalPrefix('api', {
     exclude: [{ path: 'health', method: RequestMethod.GET }],
   });
