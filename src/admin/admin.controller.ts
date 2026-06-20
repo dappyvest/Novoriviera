@@ -31,6 +31,7 @@ import { VotesService } from '../votes/votes.service';
 import { AdjustWalletDto } from '../wallet/dto/adjust-wallet.dto';
 import { WalletService } from '../wallet/wallet.service';
 import { AdminService } from './admin.service';
+import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 
 @Controller('admin')
@@ -159,6 +160,15 @@ export class AdminController {
         updateUserStatusDto.isActive,
       ),
     };
+  }
+
+  @Patch('users/:id/password')
+  resetUserPassword(
+    @Param('id') id: string,
+    @Body() dto: ResetUserPasswordDto,
+    @CurrentUser() actor: CurrentUserPayload,
+  ) {
+    return this.adminService.resetUserPassword(id, dto.newPassword, actor.id);
   }
 
   @Get('contestants')

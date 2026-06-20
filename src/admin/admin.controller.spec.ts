@@ -21,6 +21,7 @@ describe('AdminController', () => {
             findUsers: jest.fn(),
             findUser: jest.fn(),
             updateUserStatus: jest.fn(),
+            resetUserPassword: jest.fn(),
           },
         },
         { provide: CoinPackagesService, useValue: {} },

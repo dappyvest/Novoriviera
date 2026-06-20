@@ -92,8 +92,6 @@ export class CompetitionsController {
   }
 
   @Get(':competitionId/stages')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   findStages(@Param('competitionId') competitionId: string) {
     return this.stagesService.findByCompetition(competitionId);
   }

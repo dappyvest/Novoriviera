@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import { RequestMethod, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';

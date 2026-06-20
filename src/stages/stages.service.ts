@@ -31,10 +31,39 @@ export class StagesService {
     }
   }
 
-  findByCompetition(competitionId: string) {
-    return this.prisma.stage.findMany({
+  async findByCompetition(competitionId: string) {
+    const stages = await this.prisma.stage.findMany({
       where: { competitionId },
       orderBy: { stageNumber: 'asc' },
+    });
+
+    const now = new Date();
+    return stages.map((stage) => {
+      const isActive = stage.status === StageStatus.ACTIVE;
+      const isSubmissionOpen =
+        isActive &&
+        (!stage.submissionStartDate || now >= stage.submissionStartDate) &&
+        (!stage.submissionEndDate || now <= stage.submissionEndDate);
+      const isVotingOpen =
+        isActive &&
+        (!stage.votingStartDate || now >= stage.votingStartDate) &&
+        (!stage.votingEndDate || now <= stage.votingEndDate);
+
+      return {
+        id: stage.id,
+        title: stage.title,
+        stageNumber: stage.stageNumber,
+        status: stage.status,
+        submissionStartDate: stage.submissionStartDate,
+        submissionEndDate: stage.submissionEndDate,
+        votingStartDate: stage.votingStartDate,
+        votingEndDate: stage.votingEndDate,
+        isActive,
+        isSubmissionOpen,
+        isSubmissionClosed: !isSubmissionOpen,
+        isVotingOpen,
+        isVotingClosed: !isVotingOpen,
+      };
     });
   }
 

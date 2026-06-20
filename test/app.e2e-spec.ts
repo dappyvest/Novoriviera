@@ -1280,6 +1280,106 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       .expect(403);
   });
 
+  it('supports public stage discovery and audited admin password resets', async () => {
+    const adminAuth = await registerUser('admin@example.com');
+    users[0].role = UserRole.ADMIN;
+    const userAuth = await registerUser('reset-user@example.com');
+
+    const competitionResponse = await request(app.getHttpServer())
+      .post('/api/competitions')
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .send({
+        title: 'Live QA Competition',
+        slug: 'live-qa-competition',
+        status: CompetitionStatus.PUBLISHED,
+      })
+      .expect(201);
+
+    const stageResponse = await request(app.getHttpServer())
+      .post(`/api/competitions/${competitionResponse.body.id}/stages`)
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .send({
+        title: 'Open Auditions',
+        stageNumber: 1,
+        status: StageStatus.ACTIVE,
+        submissionStartDate: '2020-01-01T00:00:00.000Z',
+        submissionEndDate: '2099-01-01T00:00:00.000Z',
+        votingStartDate: '2020-01-01T00:00:00.000Z',
+        votingEndDate: '2099-01-01T00:00:00.000Z',
+      })
+      .expect(201);
+
+    const stagesResponse = await request(app.getHttpServer())
+      .get(`/api/competitions/${competitionResponse.body.id}/stages`)
+      .expect(200);
+
+    expect(stagesResponse.body).toEqual([
+      expect.objectContaining({
+        id: stageResponse.body.id,
+        title: 'Open Auditions',
+        stageNumber: 1,
+        status: StageStatus.ACTIVE,
+        isActive: true,
+        isSubmissionOpen: true,
+        isSubmissionClosed: false,
+        isVotingOpen: true,
+        isVotingClosed: false,
+      }),
+    ]);
+
+    await request(app.getHttpServer())
+      .patch(`/api/admin/users/${users[1].id}/password`)
+      .set('Authorization', `Bearer ${userAuth.body.token}`)
+      .send({ newPassword: 'TemporaryPassword123!' })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .patch(`/api/admin/users/${users[1].id}/password`)
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .send({ newPassword: 'weakpassword' })
+      .expect(400);
+
+    const resetResponse = await request(app.getHttpServer())
+      .patch(`/api/admin/users/${users[1].id}/password`)
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .send({ newPassword: 'TemporaryPassword123!' })
+      .expect(200);
+
+    expect(resetResponse.body).toEqual({
+      message: 'Password reset successfully.',
+    });
+
+    await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ email: 'reset-user@example.com', password: 'password123' })
+      .expect(401);
+
+    await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({
+        email: 'reset-user@example.com',
+        password: 'TemporaryPassword123!',
+      })
+      .expect(201);
+
+    const auditResponse = await request(app.getHttpServer())
+      .get('/api/admin/audit-logs?action=USER_PASSWORD_RESET')
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .expect(200);
+
+    expect(auditResponse.body).toMatchObject({
+      total: 1,
+      items: [
+        {
+          actorId: users[0].id,
+          action: 'USER_PASSWORD_RESET',
+          entity: 'User',
+          entityId: users[1].id,
+        },
+      ],
+    });
+  });
+
   it('supports phase 7 uploads, public profiles, weighted scoring, winners, and password changes', async () => {
     const adminAuth = await registerUser('admin@example.com');
     users[0].role = UserRole.ADMIN;

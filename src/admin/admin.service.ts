@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -57,6 +58,39 @@ export class AdminService {
     }
   }
 
+  async resetUserPassword(
+    userId: string,
+    newPassword: string,
+    actorId: string,
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: { passwordHash },
+      });
+      await tx.adminAuditLog.create({
+        data: {
+          actorId,
+          action: 'USER_PASSWORD_RESET',
+          entity: 'User',
+          entityId: userId,
+        },
+      });
+    });
+
+    return { message: 'Password reset successfully.' };
+  }
+
   async findAuditLogs(input: { page?: number; limit?: number; action?: string }) {
     const page = Math.max(input.page ?? 1, 1);
     const limit = Math.min(Math.max(input.limit ?? 20, 1), 100);
@@ -83,7 +117,10 @@ export class AdminService {
 
   async exportContestantsCsv() {
     const contestants = await this.prisma.contestant.findMany({
-      include: { user: true, competition: true },
+      include: {
+        user: { select: { email: true, phone: true } },
+        competition: { select: { title: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -91,23 +128,27 @@ export class AdminService {
       [
         'id',
         'displayName',
-        'status',
-        'competitionTitle',
+        'guardianPhone',
+        'userPhone',
         'userEmail',
+        'competitionTitle',
+        'status',
+        'isPremium',
         'totalVotes',
         'totalOnlineEngagement',
-        'isPremium',
         'createdAt',
       ],
       contestants.map((contestant) => [
         contestant.id,
         contestant.displayName,
-        contestant.status,
-        contestant.competition.title,
+        contestant.guardianPhone ?? '',
+        contestant.user?.phone ?? '',
         contestant.user?.email ?? '',
+        contestant.competition.title,
+        contestant.status,
+        contestant.isPremium,
         contestant.totalVotes,
         contestant.totalOnlineEngagement,
-        contestant.isPremium,
         contestant.createdAt,
       ]),
     );
