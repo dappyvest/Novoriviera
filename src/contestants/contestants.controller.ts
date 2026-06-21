@@ -1,10 +1,11 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { CurrentUserPayload } from '../auth/types/current-user.type';
 import { SubmissionsService } from '../submissions/submissions.service';
 import { VotesService } from '../votes/votes.service';
 import { ContestantsService } from './contestants.service';
+import { UpdateContestantPhotoDto } from './dto/update-contestant-photo.dto';
 
 @Controller('contestants')
 export class ContestantsController {
@@ -41,6 +42,20 @@ export class ContestantsController {
     return this.contestantsService.findMineForCompetition(
       user.id,
       competitionId,
+    );
+  }
+
+  @Patch('me/:competitionId/photo')
+  @UseGuards(JwtAuthGuard)
+  updateMyPhoto(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('competitionId') competitionId: string,
+    @Body() dto: UpdateContestantPhotoDto,
+  ) {
+    return this.contestantsService.updateMyPhoto(
+      user.id,
+      competitionId,
+      dto,
     );
   }
 

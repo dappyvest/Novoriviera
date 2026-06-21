@@ -196,6 +196,7 @@ Contestant endpoints:
 ```http
 GET /api/contestants/me
 GET /api/contestants/me/:competitionId
+PATCH /api/contestants/me/:competitionId/photo
 GET /api/admin/contestants
 GET /api/admin/contestants/:id
 PATCH /api/admin/contestants/:id/status
@@ -617,11 +618,11 @@ file=<video file>
 
 The video upload endpoint accepts `video/*` files only and uploads to Cloudinary under `CLOUDINARY_UPLOAD_FOLDER`.
 
-Admin image uploads:
+Authenticated image uploads:
 
 ```http
 POST /api/uploads/image
-Authorization: Bearer <admin-token>
+Authorization: Bearer <token>
 Content-Type: multipart/form-data
 
 file=<image file>
@@ -640,6 +641,22 @@ Upload response:
 }
 ```
 
+Set the uploaded image on the contestant profile for a competition:
+
+```http
+PATCH /api/contestants/me/:competitionId/photo
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "photoUrl": "https://res.cloudinary.com/cloud/image/upload/novorivera/photo.jpg",
+  "photoPublicId": "novorivera/photo",
+  "photoMeta": { "format": "jpg", "bytes": 2048 }
+}
+```
+
+Only the contestant profile owner can update the photo. `photoUrl` must be a valid HTTPS URL. Cloudinary secrets remain backend-only.
+
 Contestant submissions still support manually entered `videoUrl` and `uploadUrl`. If the frontend uploads a video first, submit the returned `secureUrl` as `videoUrl` and/or `uploadUrl`, and optionally include `cloudinaryPublicId`, `cloudinarySecureUrl`, and `uploadedFileMeta`.
 
 ### Public Contestant Profiles
@@ -648,7 +665,7 @@ Contestant submissions still support manually entered `videoUrl` and `uploadUrl`
 GET /api/contestants/:id
 ```
 
-Returns approved contestant public profile data, competition, status, premium state, vote/engagement totals, latest approved submission links, and social-share fields. Private user data is not returned.
+Returns approved contestant public profile data including `photoUrl`, competition, status, premium state, vote/engagement totals, latest approved submission links, and social-share fields. Leaderboard and admin contestant responses also include `photoUrl`. Private user data and photo upload metadata are not returned publicly.
 
 ### Multi-Platform Submission Links
 

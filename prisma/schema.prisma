@@ -176,6 +176,9 @@ model Contestant {
   location    String?
   guardianName String?
   guardianPhone String?
+  photoUrl     String?
+  photoPublicId String?
+  photoMeta    Json?
   status      ContestantStatus @default(PENDING)
   isPremium   Boolean          @default(false)
   premiumExpiresAt DateTime?

@@ -4,11 +4,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ContestantStatus, UserRole } from '@prisma/client';
+import { ContestantStatus, Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateContestantDto } from './dto/create-contestant.dto';
 import { UpdateEngagementDto } from './dto/update-engagement.dto';
 import { UpdateContestantPremiumDto } from './dto/update-contestant-premium.dto';
+import { UpdateContestantPhotoDto } from './dto/update-contestant-photo.dto';
 
 @Injectable()
 export class ContestantsService {
@@ -65,6 +66,30 @@ export class ContestantsService {
     return contestant;
   }
 
+  async updateMyPhoto(
+    userId: string,
+    competitionId: string,
+    dto: UpdateContestantPhotoDto,
+  ) {
+    const contestant = await this.prisma.contestant.findUnique({
+      where: { competitionId_userId: { competitionId, userId } },
+      select: { id: true },
+    });
+
+    if (!contestant) {
+      throw new NotFoundException('Contestant profile not found');
+    }
+
+    return this.prisma.contestant.update({
+      where: { id: contestant.id },
+      data: {
+        photoUrl: dto.photoUrl,
+        photoPublicId: dto.photoPublicId,
+        photoMeta: dto.photoMeta as Prisma.InputJsonValue | undefined,
+      },
+    });
+  }
+
   findAll() {
     return this.prisma.contestant.findMany({
       include: { user: true, competition: true },
@@ -113,6 +138,7 @@ export class ContestantsService {
       bio: contestant.bio,
       age: contestant.age,
       location: contestant.location,
+      photoUrl: contestant.photoUrl,
       status: contestant.status,
       isPremium: contestant.isPremium,
       premiumExpiresAt: contestant.premiumExpiresAt,
@@ -141,7 +167,10 @@ export class ContestantsService {
       shareDescription:
         contestant.bio ??
         `Vote for ${contestant.displayName} in ${contestant.competition.title}`,
-      shareImageUrl: latestSubmission?.thumbnailUrl ?? contestant.competition.bannerUrl,
+      shareImageUrl:
+        latestSubmission?.thumbnailUrl ??
+        contestant.photoUrl ??
+        contestant.competition.bannerUrl,
       createdAt: contestant.createdAt,
       updatedAt: contestant.updatedAt,
     };

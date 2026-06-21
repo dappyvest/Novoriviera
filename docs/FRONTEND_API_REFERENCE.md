@@ -627,7 +627,7 @@ Cloudinary credentials are backend-only. Do not store or use `CLOUDINARY_API_SEC
 | Method | Path | Auth | Roles |
 | --- | --- | --- | --- |
 | `POST` | `/api/uploads/video` | Required | Any active user |
-| `POST` | `/api/uploads/image` | Required | `ADMIN`, `SUPER_ADMIN` |
+| `POST` | `/api/uploads/image` | Required | Any active user |
 
 Request:
 
@@ -650,7 +650,9 @@ Success:
 }
 ```
 
-Common errors: `400` missing file/wrong mime/upload failure, `401`, `403`, `413` file too large, `503` Cloudinary not configured.
+Use the image response `secureUrl` and `publicId` with the contestant photo update endpoint. Cloudinary API credentials and signatures are never returned.
+
+Common errors: `400` missing file/wrong mime/upload failure, `401`, `413` file too large, `503` Cloudinary not configured.
 
 ### Competitions
 
@@ -701,11 +703,11 @@ Common errors: `404` competition not found.
 
 | Method | Path | Auth | Roles |
 | --- | --- | --- | --- |
-| `GET` | `/api/competitions/:competitionId/stages` | Required | `ADMIN`, `SUPER_ADMIN` |
+| `GET` | `/api/competitions/:competitionId/stages` | Public | None |
 | `GET` | `/api/stages/:stageId/submissions` | Public | None |
 | `GET` | `/api/stages/:stageId/votes/summary` | Public | None |
 
-Important: public competition details already include stages via `GET /api/competitions/:id`. The standalone `GET /api/competitions/:competitionId/stages` route is admin-only.
+Public competition details include stages via `GET /api/competitions/:id`. The standalone stage route also exposes ordered stages and active/submission/voting window flags.
 
 `GET /api/stages/:stageId/submissions`
 
@@ -762,6 +764,7 @@ Common errors: `401`, `403`, `404`.
 | `POST` | `/api/competitions/:competitionId/contestants` | Required | Any active user |
 | `GET` | `/api/contestants/me` | Required | Any active user |
 | `GET` | `/api/contestants/me/:competitionId` | Required | Any active user |
+| `PATCH` | `/api/contestants/me/:competitionId/photo` | Required | Contestant owner |
 | `GET` | `/api/contestants/:id/votes` | Required | Any active user |
 
 `GET /api/contestants/:id`
@@ -777,6 +780,7 @@ Success:
   "bio": "Singer",
   "age": 19,
   "location": "Lagos",
+  "photoUrl": "https://res.cloudinary.com/cloud/image/upload/novorivera/photo.jpg",
   "status": "APPROVED",
   "isPremium": false,
   "premiumExpiresAt": null,
@@ -806,6 +810,25 @@ Success:
 ```
 
 Common errors: `404` when contestant is not approved or does not exist.
+
+`PATCH /api/contestants/me/:competitionId/photo`
+
+Upload an `image/*` file to `POST /api/uploads/image`, then send its returned values:
+
+```json
+{
+  "photoUrl": "https://res.cloudinary.com/cloud/image/upload/novorivera/photo.jpg",
+  "photoPublicId": "novorivera/photo",
+  "photoMeta": {
+    "format": "jpg",
+    "bytes": 2048
+  }
+}
+```
+
+`photoUrl` must be a valid HTTPS URL. The current user must own the contestant profile for `competitionId`. The response includes the updated contestant, including `photoUrl`, `photoPublicId`, and `photoMeta`. Public contestant profiles and leaderboard entries expose only `photoUrl`; owner and admin contestant responses include all three fields.
+
+Common errors: `400` invalid URL/body, `401`, `404` contestant profile not found for the current user and competition.
 
 `POST /api/competitions/:competitionId/contestants`
 
@@ -960,6 +983,7 @@ Success:
     "rank": 1,
     "contestantId": "contestant-id",
     "displayName": "Jane Star",
+    "photoUrl": "https://res.cloudinary.com/cloud/image/upload/novorivera/photo.jpg",
     "status": "APPROVED",
     "isPremium": true,
     "totalVotes": 100,
@@ -1507,7 +1531,7 @@ Backward compatible simple body:
 
 Breakdown total is computed as `views + likes + comments + shares + watchScore`.
 
-Success: contestant object. Lists include related `user` and `competition`.
+Success: contestant object. Lists include related `user` and `competition`, plus `photoUrl`, `photoPublicId`, and `photoMeta` when set.
 
 Common errors: `400`, `401`, `403`, `404`.
 
@@ -1762,9 +1786,11 @@ User-auth routes:
 - `PATCH /api/users/me`
 - `PATCH /api/users/me/password`
 - `POST /api/uploads/video`
+- `POST /api/uploads/image`
 - `POST /api/competitions/:competitionId/contestants`
 - `GET /api/contestants/me`
 - `GET /api/contestants/me/:competitionId`
+- `PATCH /api/contestants/me/:competitionId/photo`
 - `GET /api/contestants/me/submissions`
 - `GET /api/contestants/:id/votes`
 - `POST /api/stages/:stageId/submissions`
@@ -1778,7 +1804,6 @@ User-auth routes:
 Admin-auth routes:
 
 - All `/api/admin/*` routes.
-- `POST /api/uploads/image`
 - `POST /api/admin/coin-packages`
 - `GET /api/admin/coin-packages`
 - `PATCH /api/admin/coin-packages/:id`
@@ -1829,13 +1854,14 @@ Admin-auth routes:
 2. Frontend loads competition detail from `/api/competitions/:id`.
 3. User submits contestant profile to `/api/competitions/:competitionId/contestants`.
 4. Contestant starts as `PENDING`; admin must approve with `/api/admin/contestants/:id/status`.
-5. Optional upload path: authenticated user uploads video to `/api/uploads/video`, then sends the returned `secureUrl` as `videoUrl` and/or `uploadUrl` in the submission body. Manual URL submission still works.
-6. Approved contestants can submit to active/open submission stages through `/api/stages/:stageId/submissions`.
-7. One submission is allowed per contestant per stage.
-8. Submission starts as `PENDING`; admin reviews through `/api/admin/submissions/:id/status`.
-9. Admin can attach YouTube, TikTok, Facebook, Instagram, external video, and thumbnail links through `/api/admin/submissions/:id/youtube`.
-10. Public stage submissions list only approved submissions.
-11. TikTok/Facebook/Instagram metrics are entered manually through the admin engagement endpoint; there is no external social API integration yet.
+5. Optional photo path: upload an image to `/api/uploads/image`, then set `secureUrl`, `publicId`, and optional response metadata through `/api/contestants/me/:competitionId/photo`.
+6. Optional video path: upload video to `/api/uploads/video`, then send `secureUrl` as `videoUrl` and/or `uploadUrl`. Manual URL submission still works.
+7. Approved contestants can submit to active/open submission stages through `/api/stages/:stageId/submissions`.
+8. One submission is allowed per contestant per stage.
+9. Submission starts as `PENDING`; admin reviews through `/api/admin/submissions/:id/status`.
+10. Admin can attach YouTube, TikTok, Facebook, Instagram, external video, and thumbnail links through `/api/admin/submissions/:id/youtube`.
+11. Public stage submissions list only approved submissions.
+12. TikTok/Facebook/Instagram metrics are entered manually through the admin engagement endpoint; there is no external social API integration yet.
 
 ## Suggested Frontend Routes
 

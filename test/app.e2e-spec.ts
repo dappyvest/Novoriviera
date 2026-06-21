@@ -77,6 +77,9 @@ type MockContestant = {
   competitionId: string;
   displayName: string;
   bio: string | null;
+  photoUrl: string | null;
+  photoPublicId: string | null;
+  photoMeta: unknown | null;
   status: ContestantStatus;
   isPremium: boolean;
   premiumExpiresAt: Date | null;
@@ -510,6 +513,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
           competitionId: data.competitionId,
           displayName: data.displayName,
           bio: data.bio ?? null,
+          photoUrl: data.photoUrl ?? null,
+          photoPublicId: data.photoPublicId ?? null,
+          photoMeta: data.photoMeta ?? null,
           status: data.status ?? ContestantStatus.PENDING,
           isPremium: false,
           premiumExpiresAt: null,
@@ -1259,6 +1265,145 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       status: ContestantStatus.APPROVED,
       totalVotes: 5,
     });
+  });
+
+  it('lets contestants upload and own their profile photo', async () => {
+    const adminAuth = await registerUser('admin@example.com');
+    users[0].role = UserRole.ADMIN;
+    const ownerAuth = await registerUser('photo-owner@example.com');
+    const otherAuth = await registerUser('other-user@example.com');
+
+    const competitionResponse = await request(app.getHttpServer())
+      .post('/api/competitions')
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .send({
+        title: 'Photo Competition',
+        slug: 'photo-competition',
+        status: CompetitionStatus.PUBLISHED,
+      })
+      .expect(201);
+
+    const contestantResponse = await request(app.getHttpServer())
+      .post(`/api/competitions/${competitionResponse.body.id}/contestants`)
+      .set('Authorization', `Bearer ${ownerAuth.body.token}`)
+      .send({ displayName: 'Photo Star' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .patch(`/api/admin/contestants/${contestantResponse.body.id}/status`)
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .send({ status: ContestantStatus.APPROVED })
+      .expect(200);
+
+    const fetchMock = jest.spyOn(global, 'fetch');
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        secure_url:
+          'https://res.cloudinary.com/test/image/upload/contestants/photo.jpg',
+        public_id: 'novorivera-test/contestants/photo',
+        resource_type: 'image',
+        format: 'jpg',
+        bytes: 2048,
+      }),
+    } as Response);
+
+    const uploadResponse = await request(app.getHttpServer())
+      .post('/api/uploads/image')
+      .set('Authorization', `Bearer ${ownerAuth.body.token}`)
+      .attach('file', Buffer.from('fake-image'), {
+        filename: 'photo.jpg',
+        contentType: 'image/jpeg',
+      })
+      .expect(201);
+
+    expect(uploadResponse.body).toMatchObject({
+      secureUrl:
+        'https://res.cloudinary.com/test/image/upload/contestants/photo.jpg',
+      publicId: 'novorivera-test/contestants/photo',
+      resourceType: 'image',
+      format: 'jpg',
+      bytes: 2048,
+    });
+
+    await request(app.getHttpServer())
+      .patch(
+        `/api/contestants/me/${competitionResponse.body.id}/photo`,
+      )
+      .set('Authorization', `Bearer ${ownerAuth.body.token}`)
+      .send({
+        photoUrl: 'not-a-url',
+        photoPublicId: uploadResponse.body.publicId,
+      })
+      .expect(400);
+
+    const photoPayload = {
+      photoUrl: uploadResponse.body.secureUrl,
+      photoPublicId: uploadResponse.body.publicId,
+      photoMeta: {
+        format: uploadResponse.body.format,
+        bytes: uploadResponse.body.bytes,
+      },
+    };
+    const updateResponse = await request(app.getHttpServer())
+      .patch(
+        `/api/contestants/me/${competitionResponse.body.id}/photo`,
+      )
+      .set('Authorization', `Bearer ${ownerAuth.body.token}`)
+      .send(photoPayload)
+      .expect(200);
+
+    expect(updateResponse.body).toMatchObject(photoPayload);
+
+    await request(app.getHttpServer())
+      .patch(
+        `/api/contestants/me/${competitionResponse.body.id}/photo`,
+      )
+      .set('Authorization', `Bearer ${otherAuth.body.token}`)
+      .send(photoPayload)
+      .expect(404);
+
+    const publicResponse = await request(app.getHttpServer())
+      .get(`/api/contestants/${contestantResponse.body.id}`)
+      .expect(200);
+    expect(publicResponse.body).toMatchObject({
+      id: contestantResponse.body.id,
+      photoUrl: photoPayload.photoUrl,
+    });
+    expect(publicResponse.body.photoPublicId).toBeUndefined();
+    expect(publicResponse.body.photoMeta).toBeUndefined();
+
+    const mineResponse = await request(app.getHttpServer())
+      .get('/api/contestants/me')
+      .set('Authorization', `Bearer ${ownerAuth.body.token}`)
+      .expect(200);
+    expect(mineResponse.body[0]).toMatchObject(photoPayload);
+
+    const mineForCompetitionResponse = await request(app.getHttpServer())
+      .get(`/api/contestants/me/${competitionResponse.body.id}`)
+      .set('Authorization', `Bearer ${ownerAuth.body.token}`)
+      .expect(200);
+    expect(mineForCompetitionResponse.body).toMatchObject(photoPayload);
+
+    const leaderboardResponse = await request(app.getHttpServer())
+      .get(`/api/competitions/${competitionResponse.body.id}/leaderboard`)
+      .expect(200);
+    expect(leaderboardResponse.body[0]).toMatchObject({
+      contestantId: contestantResponse.body.id,
+      photoUrl: photoPayload.photoUrl,
+    });
+
+    const adminListResponse = await request(app.getHttpServer())
+      .get('/api/admin/contestants')
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .expect(200);
+    expect(adminListResponse.body[0]).toMatchObject(photoPayload);
+
+    const adminDetailResponse = await request(app.getHttpServer())
+      .get(`/api/admin/contestants/${contestantResponse.body.id}`)
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .expect(200);
+    expect(adminDetailResponse.body).toMatchObject(photoPayload);
   });
 
   it('forbids normal users from admin wallet endpoints', async () => {

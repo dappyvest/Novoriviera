@@ -164,6 +164,7 @@ export class CompetitionsService {
       rank: index + 1,
       contestantId: contestant.id,
       displayName: contestant.displayName,
+      photoUrl: contestant.photoUrl,
       status: contestant.status,
       isPremium: contestant.isPremium,
       totalVotes: contestant.totalVotes,
