@@ -74,6 +74,12 @@ class EnvironmentVariables {
   @IsOptional()
   @Type(() => Number)
   MAX_UPLOAD_SIZE_MB = 100;
+
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  @Type(() => Number)
+  MAX_VIDEO_UPLOAD_SIZE_MB?: number;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

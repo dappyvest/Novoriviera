@@ -8,15 +8,23 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
   const configService = app.get(ConfigService);
   const frontendUrls = configService
-  .get<string>('APP_FRONTEND_URL', '')
-  .split(',')
-  .map((url) => url.trim())
-  .filter(Boolean);
+    .get<string>('APP_FRONTEND_URL', '')
+    .split(',')
+    .map((url) => url.trim())
+    .filter(Boolean);
 
-app.enableCors({
-  origin: frontendUrls.length > 0 ? frontendUrls : true,
-  credentials: true,
-});
+  const allowedOrigins = [
+    ...new Set([
+      'https://www.novoriviera.com',
+      'https://novoriviera.com',
+      ...frontendUrls,
+    ]),
+  ];
+
+  app.enableCors({
+    origin: allowedOrigins,
+    credentials: true,
+  });
   app.setGlobalPrefix('api', {
     exclude: [{ path: 'health', method: RequestMethod.GET }],
   });

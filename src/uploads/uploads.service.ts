@@ -1,100 +1,145 @@
 import {
+  BadGatewayException,
   BadRequestException,
   Injectable,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHash } from 'crypto';
+import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
+import { createReadStream, promises as fs } from 'fs';
+import { Readable } from 'stream';
 
 type UploadedFile = {
-  buffer: Buffer;
+  buffer?: Buffer;
   mimetype: string;
   originalname: string;
+  path?: string;
   size: number;
 };
 
 type UploadKind = 'image' | 'video';
 
+const supportedVideoMimeTypes = new Set([
+  'video/mp4',
+  'video/quicktime',
+  'video/webm',
+  'video/x-msvideo',
+  'video/x-matroska',
+  'video/3gpp',
+]);
+
 @Injectable()
 export class UploadsService {
+  private readonly logger = new Logger(UploadsService.name);
+
   constructor(private readonly configService: ConfigService) {}
 
   async upload(file: UploadedFile | undefined, kind: UploadKind) {
     if (!file) {
-      throw new BadRequestException('File is required');
-    }
-
-    const isValidMime =
-      kind === 'video'
-        ? file.mimetype.startsWith('video/')
-        : file.mimetype.startsWith('image/');
-
-    if (!isValidMime) {
-      throw new BadRequestException(`Only ${kind} uploads are allowed`);
-    }
-
-    const cloudName = this.configService.get<string>('CLOUDINARY_CLOUD_NAME');
-    const apiKey = this.configService.get<string>('CLOUDINARY_API_KEY');
-    const apiSecret = this.configService.get<string>('CLOUDINARY_API_SECRET');
-    const folder =
-      this.configService.get<string>('CLOUDINARY_UPLOAD_FOLDER') ?? 'novorivera';
-
-    if (!cloudName || !apiKey || !apiSecret) {
-      throw new ServiceUnavailableException('Cloudinary is not configured');
-    }
-
-    const timestamp = Math.floor(Date.now() / 1000).toString();
-    const signature = this.signUpload({ folder, timestamp }, apiSecret);
-    const form = new FormData();
-    form.append(
-      'file',
-      new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }),
-      file.originalname,
-    );
-    form.append('api_key', apiKey);
-    form.append('timestamp', timestamp);
-    form.append('folder', folder);
-    form.append('signature', signature);
-
-    const response = await fetch(
-      `https://api.cloudinary.com/v1_1/${cloudName}/${kind}/upload`,
-      {
-        method: 'POST',
-        body: form,
-      },
-    );
-    const body = (await response.json()) as {
-      secure_url?: string;
-      public_id?: string;
-      resource_type?: string;
-      format?: string;
-      bytes?: number;
-      duration?: number;
-      error?: { message?: string };
-    };
-
-    if (!response.ok || !body.secure_url || !body.public_id) {
       throw new BadRequestException(
-        body.error?.message ?? 'Cloudinary upload failed',
+        `File is required in the multipart/form-data field named "file"`,
       );
     }
 
-    return {
-      secureUrl: body.secure_url,
-      publicId: body.public_id,
-      resourceType: body.resource_type,
-      format: body.format,
-      bytes: body.bytes,
-      duration: body.duration,
-    };
+    try {
+      const isValidMime =
+        kind === 'video'
+          ? supportedVideoMimeTypes.has(file.mimetype)
+          : file.mimetype.startsWith('image/');
+
+      if (!isValidMime) {
+        throw new BadRequestException(
+          kind === 'video'
+            ? 'Unsupported video format. Use MP4, MOV, WebM, AVI, MKV, or 3GP'
+            : 'Only image uploads are allowed',
+        );
+      }
+
+      const cloudName = this.configService.get<string>('CLOUDINARY_CLOUD_NAME');
+      const apiKey = this.configService.get<string>('CLOUDINARY_API_KEY');
+      const apiSecret = this.configService.get<string>('CLOUDINARY_API_SECRET');
+      const folder =
+        this.configService.get<string>('CLOUDINARY_UPLOAD_FOLDER') ??
+        'novorivera';
+
+      if (!cloudName || !apiKey || !apiSecret) {
+        throw new ServiceUnavailableException('Cloudinary is not configured');
+      }
+
+      cloudinary.config({
+        cloud_name: cloudName,
+        api_key: apiKey,
+        api_secret: apiSecret,
+      });
+      this.logger.log(
+        `Cloudinary upload starting resourceType=${kind} size=${file.size} mimetype=${file.mimetype}`,
+      );
+
+      const source = file.path
+        ? createReadStream(file.path)
+        : Readable.from(file.buffer ?? Buffer.alloc(0));
+      const result = await this.uploadStream(source, folder, kind);
+
+      this.logger.log(
+        `Cloudinary upload succeeded publicId=${result.public_id} resourceType=${result.resource_type} bytes=${result.bytes}`,
+      );
+
+      return {
+        secureUrl: result.secure_url,
+        publicId: result.public_id,
+        resourceType: result.resource_type,
+        format: result.format,
+        bytes: result.bytes,
+        duration: result.duration,
+      };
+    } catch (error) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof ServiceUnavailableException
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Cloudinary ${kind} upload failed name=${file.originalname} size=${file.size} mimetype=${file.mimetype}: ${message}`,
+      );
+      throw new BadGatewayException(
+        `${kind === 'video' ? 'Video' : 'Image'} upload service failed. Please try again`,
+      );
+    } finally {
+      if (file.path) {
+        await fs.unlink(file.path).catch((cleanupError: unknown) => {
+          this.logger.warn(
+            `Could not remove temporary upload ${file.path}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+          );
+        });
+      }
+    }
   }
 
-  private signUpload(params: Record<string, string>, apiSecret: string) {
-    const payload = Object.keys(params)
-      .sort()
-      .map((key) => `${key}=${params[key]}`)
-      .join('&');
+  private uploadStream(
+    source: Readable,
+    folder: string,
+    resourceType: UploadKind,
+  ): Promise<UploadApiResponse> {
+    return new Promise((resolve, reject) => {
+      const destination = cloudinary.uploader.upload_stream(
+        { folder, resource_type: resourceType },
+        (error, result) => {
+          if (error) {
+            reject(error);
+          } else if (!result?.secure_url || !result.public_id) {
+            reject(new Error('Cloudinary returned an incomplete response'));
+          } else {
+            resolve(result);
+          }
+        },
+      );
 
-    return createHash('sha1').update(`${payload}${apiSecret}`).digest('hex');
+      source.on('error', reject);
+      source.pipe(destination);
+    });
   }
 }

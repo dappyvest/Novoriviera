@@ -606,6 +606,7 @@ CLOUDINARY_API_KEY="replace-with-api-key"
 CLOUDINARY_API_SECRET="replace-with-api-secret"
 CLOUDINARY_UPLOAD_FOLDER="novorivera"
 MAX_UPLOAD_SIZE_MB=100
+MAX_VIDEO_UPLOAD_SIZE_MB=100
 ```
 
 Do not expose `CLOUDINARY_API_SECRET` to the frontend.
@@ -620,7 +621,7 @@ Content-Type: multipart/form-data
 file=<video file>
 ```
 
-The video upload endpoint accepts `video/*` files only and uploads to Cloudinary under `CLOUDINARY_UPLOAD_FOLDER`.
+The video upload endpoint accepts MP4, MOV, WebM, AVI, MKV, and 3GP files and uploads to Cloudinary under `CLOUDINARY_UPLOAD_FOLDER`. The maximum video size is controlled by `MAX_VIDEO_UPLOAD_SIZE_MB` (default `100` MB, falling back to `MAX_UPLOAD_SIZE_MB`). Videos are written to temporary disk storage and streamed to Cloudinary rather than held in application memory. Oversized files return a JSON `413 Payload Too Large` response.
 
 Authenticated image uploads:
 

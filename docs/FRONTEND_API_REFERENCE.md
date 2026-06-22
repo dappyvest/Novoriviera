@@ -633,9 +633,9 @@ Request:
 
 - `multipart/form-data`
 - Field name: `file`
-- Video route accepts `video/*` only.
+- Video route accepts MP4, MOV, WebM, AVI, MKV, and 3GP.
 - Image route accepts `image/*` only.
-- Max upload size is configured by `MAX_UPLOAD_SIZE_MB`, default `100`.
+- Max video upload size is configured by `MAX_VIDEO_UPLOAD_SIZE_MB`, default `100` MB and falling back to `MAX_UPLOAD_SIZE_MB`.
 
 Success:
 
@@ -652,7 +652,7 @@ Success:
 
 Use the image response `secureUrl` and `publicId` with the contestant photo update endpoint. Cloudinary API credentials and signatures are never returned.
 
-Common errors: `400` missing file/wrong mime/upload failure, `401`, `413` file too large, `503` Cloudinary not configured.
+Common errors: `400` missing file or unsupported format, `401`, `413` file too large, `502` Cloudinary upload failure, `503` Cloudinary not configured. All application errors are JSON responses.
 
 ### Competitions
 
