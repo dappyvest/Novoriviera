@@ -222,6 +222,8 @@ Premium update:
 
 Submit stage entry:
 
+Contestants with `PENDING` or `APPROVED` status can submit immediately. `REJECTED` and `ELIMINATED` contestants cannot submit. Every new submission starts as `PENDING` for admin review.
+
 ```http
 POST /api/stages/:stageId/submissions
 Authorization: Bearer <token>
@@ -244,6 +246,8 @@ GET /api/admin/submissions
 PATCH /api/admin/submissions/:id/status
 PATCH /api/admin/submissions/:id/youtube
 ```
+
+New entries appear in the admin dashboard under **Submissions**. Admins can approve or reject submissions and update their platform links after upload; invalid or inappropriate content should be rejected during this review.
 
 Admin YouTube update:
 

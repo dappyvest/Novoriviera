@@ -947,11 +947,11 @@ Success:
 Rules:
 
 - Stage must exist.
-- Current user must have an `APPROVED` contestant profile in the stage competition.
+- Current user must have a `PENDING` or `APPROVED` contestant profile in the stage competition. `REJECTED` and `ELIMINATED` contestants receive `Only active contestants can submit entries.`
 - Current time must be inside the stage submission window when dates are set.
 - One submission per contestant per stage.
 
-Common errors: `400` outside window or not approved, `401`, `404`, `409`.
+Common errors: `400` outside window or inactive contestant, `401`, `404`, `409`.
 
 ### Leaderboard
 
@@ -1570,6 +1570,8 @@ YouTube body:
 
 Success: submission object. Admin list includes contestant, contestant user, contestant competition, and stage.
 
+All new entries start as `PENDING` and appear in the admin dashboard under **Submissions**. Admins review content after upload, approve valid entries, reject invalid or inappropriate entries, and can update YouTube, TikTok, Facebook, Instagram, external video, and thumbnail links.
+
 Common errors: `400`, `401`, `403`, `404`.
 
 ### Admin Wallets
@@ -1853,12 +1855,12 @@ Admin-auth routes:
 1. User registers/logs in.
 2. Frontend loads competition detail from `/api/competitions/:id`.
 3. User submits contestant profile to `/api/competitions/:competitionId/contestants`.
-4. Contestant starts as `PENDING`; admin must approve with `/api/admin/contestants/:id/status`.
+4. Contestant starts as `PENDING`; admin can approve or reject the contestant later with `/api/admin/contestants/:id/status`.
 5. Optional photo path: upload an image to `/api/uploads/image`, then set `secureUrl`, `publicId`, and optional response metadata through `/api/contestants/me/:competitionId/photo`.
 6. Optional video path: upload video to `/api/uploads/video`, then send `secureUrl` as `videoUrl` and/or `uploadUrl`. Manual URL submission still works.
-7. Approved contestants can submit to active/open submission stages through `/api/stages/:stageId/submissions`.
+7. `PENDING` and `APPROVED` contestants can submit immediately to open submission stages through `/api/stages/:stageId/submissions`; `REJECTED` and `ELIMINATED` contestants cannot submit.
 8. One submission is allowed per contestant per stage.
-9. Submission starts as `PENDING`; admin reviews through `/api/admin/submissions/:id/status`.
+9. Submission starts as `PENDING` and appears in the admin dashboard under **Submissions**; admin approves or rejects invalid/inappropriate content through `/api/admin/submissions/:id/status`.
 10. Admin can attach YouTube, TikTok, Facebook, Instagram, external video, and thumbnail links through `/api/admin/submissions/:id/youtube`.
 11. Public stage submissions list only approved submissions.
 12. TikTok/Facebook/Instagram metrics are entered manually through the admin engagement endpoint; there is no external social API integration yet.

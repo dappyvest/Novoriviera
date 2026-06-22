@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ContestantStatus, Prisma } from '@prisma/client';
+import { ContestantStatus, Prisma, SubmissionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSubmissionDto } from './dto/create-submission.dto';
 import { UpdateSubmissionStatusDto } from './dto/update-submission-status.dto';
@@ -34,8 +34,14 @@ export class SubmissionsService {
       },
     });
 
-    if (!contestant || contestant.status !== ContestantStatus.APPROVED) {
-      throw new BadRequestException('Only approved contestants can submit');
+    if (
+      !contestant ||
+      (contestant.status !== ContestantStatus.PENDING &&
+        contestant.status !== ContestantStatus.APPROVED)
+    ) {
+      throw new BadRequestException(
+        'Only active contestants can submit entries.',
+      );
     }
 
     try {
@@ -47,6 +53,7 @@ export class SubmissionsService {
             | undefined,
           contestantId: contestant.id,
           stageId,
+          status: SubmissionStatus.PENDING,
         },
       });
     } catch (error) {
