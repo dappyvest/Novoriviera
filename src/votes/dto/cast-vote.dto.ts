@@ -1,4 +1,4 @@
-import { IsInt, IsString, Min } from 'class-validator';
+import { IsDivisibleBy, IsInt, IsString, Min } from 'class-validator';
 
 export class CastVoteDto {
   @IsString()
@@ -8,6 +8,7 @@ export class CastVoteDto {
   stageId!: string;
 
   @IsInt()
-  @Min(1)
+  @Min(10)
+  @IsDivisibleBy(10)
   coinsToSpend!: number;
 }

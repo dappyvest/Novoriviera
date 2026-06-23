@@ -40,7 +40,7 @@ describe('SubmissionsService', () => {
   });
 
   it.each([ContestantStatus.PENDING, ContestantStatus.APPROVED])(
-    'allows a %s contestant to submit a pending entry',
+    'allows a %s contestant to submit a publicly visible entry',
     async (status) => {
       contestantFindUnique.mockResolvedValue({
         id: 'contestant-1',
@@ -52,13 +52,13 @@ describe('SubmissionsService', () => {
       ).resolves.toMatchObject({
         contestantId: 'contestant-1',
         stageId: 'stage-1',
-        status: SubmissionStatus.PENDING,
+        status: SubmissionStatus.APPROVED,
       });
       expect(submissionCreate).toHaveBeenCalledWith({
         data: expect.objectContaining({
           contestantId: 'contestant-1',
           stageId: 'stage-1',
-          status: SubmissionStatus.PENDING,
+          status: SubmissionStatus.APPROVED,
         }),
       });
     },

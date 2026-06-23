@@ -602,7 +602,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
           description: data.description ?? null,
           videoUrl: data.videoUrl ?? null,
           uploadUrl: data.uploadUrl ?? null,
-          status: SubmissionStatus.PENDING,
+          status: data.status ?? SubmissionStatus.APPROVED,
           youtubeUrl: data.youtubeUrl ?? null,
           tiktokUrl: data.tiktokUrl ?? null,
           facebookUrl: data.facebookUrl ?? null,
@@ -622,14 +622,31 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         let result = [...submissions];
         if (where?.stageId)
           result = result.filter((item) => item.stageId === where.stageId);
-        if (where?.status)
-          result = result.filter((item) => item.status === where.status);
+        if (where?.status) {
+          if (where.status.notIn) {
+            result = result.filter(
+              (item) => !where.status.notIn.includes(item.status),
+            );
+          } else {
+            result = result.filter((item) => item.status === where.status);
+          }
+        }
         if (where?.contestant?.userId) {
           const contestantIds = contestants
             .filter((item) => item.userId === where.contestant.userId)
             .map((item) => item.id);
           result = result.filter((item) =>
             contestantIds.includes(item.contestantId),
+          );
+        }
+        if (where?.contestant?.status?.notIn) {
+          const blockedContestantIds = contestants
+            .filter((item) =>
+              where.contestant.status.notIn.includes(item.status),
+            )
+            .map((item) => item.id);
+          result = result.filter(
+            (item) => !blockedContestantIds.includes(item.contestantId),
           );
         }
         return Promise.resolve(
@@ -1344,7 +1361,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       .send({
         contestantId: contestantResponse.body.id,
         stageId: stageResponse.body.id,
-        coinsToSpend: 5,
+        coinsToSpend: 10,
       })
       .expect(201);
 
@@ -1353,7 +1370,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       .set('Authorization', `Bearer ${userAuth.body.token}`)
       .expect(200);
 
-    expect(debitedWalletResponse.body.balance).toBe(5);
+    expect(debitedWalletResponse.body.balance).toBe(0);
 
     await request(app.getHttpServer())
       .post('/api/votes/cast')
@@ -1361,7 +1378,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       .send({
         contestantId: contestantResponse.body.id,
         stageId: stageResponse.body.id,
-        coinsToSpend: 50,
+        coinsToSpend: 5,
       })
       .expect(400);
 
@@ -1384,7 +1401,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       contestantId: contestantResponse.body.id,
       displayName: 'Jane Star',
       status: ContestantStatus.APPROVED,
-      totalVotes: 5,
+      totalVotes: 1,
     });
   });
 

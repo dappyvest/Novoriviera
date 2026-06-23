@@ -222,7 +222,7 @@ Premium update:
 
 Submit stage entry:
 
-Any authenticated user can register as a contestant, upload their contestant photo, and submit a video entry after registration. Contestants can submit immediately unless their contestant profile is explicitly `REJECTED` or `ELIMINATED`, or their user account is deactivated. Every new submission starts as `PENDING` for admin review.
+Any authenticated user can register as a contestant, upload their contestant photo, and submit a video entry after registration. Contestants can submit immediately unless their contestant profile is explicitly `REJECTED` or `ELIMINATED`, or their user account is deactivated. New submissions are publicly visible immediately and are stored as `APPROVED` by default; admins can still reject or remove bad entries after upload.
 
 ```http
 POST /api/stages/:stageId/submissions
@@ -247,7 +247,7 @@ PATCH /api/admin/submissions/:id/status
 PATCH /api/admin/submissions/:id/youtube
 ```
 
-New entries appear in the admin dashboard under **Submissions**. Admins can approve or reject submissions and update their platform links after upload; invalid or inappropriate content should be rejected during this review.
+New entries appear in the admin dashboard under **Submissions** and in public submission/leaderboard/profile responses immediately. Admins can reject or delete submissions and update their platform links after upload; invalid or inappropriate content should be removed through moderation.
 
 Admin YouTube update:
 
@@ -342,13 +342,14 @@ Content-Type: application/json
 {
   "contestantId": "contestant-id",
   "stageId": "stage-id",
-  "coinsToSpend": 5
+  "coinsToSpend": 10
 }
 ```
 
 Rules:
 
-- `1` coin equals `1` vote.
+- `coinsToSpend` must be at least `10` and divisible by `10`.
+- `10` coins equal `1` vote.
 - The voter must have enough coins.
 - The stage must be `ACTIVE`.
 - Voting must be inside the stage voting window.
@@ -672,7 +673,7 @@ Contestant submissions still support manually entered `videoUrl` and `uploadUrl`
 GET /api/contestants/:id
 ```
 
-Returns registered entrant public profile data, excluding only `REJECTED` and `ELIMINATED` contestants. Public profiles include `photoUrl`, competition, status, premium state, vote/engagement totals, rank/counter fields where available, latest approved submission links, and social-share fields. Leaderboard rows include `rank`, `entrantCount`, `photoUrl`, `totalVotes`, and `totalOnlineEngagement`. Admin contestant responses also include photo upload metadata. Private user data and photo upload metadata are not returned publicly.
+Returns registered entrant public profile data, excluding only `REJECTED` and `ELIMINATED` contestants. Public profiles include `photoUrl`, competition, status, premium state, vote/engagement totals, rank/counter fields where available, latest visible submission links, and social-share fields. Leaderboard rows include `rank`, `entrantCount`, `photoUrl`, `totalVotes`, `totalOnlineEngagement`, and latest submission video fields when available. Admin contestant responses also include photo upload metadata. Private user data and photo upload metadata are not returned publicly.
 
 ### Multi-Platform Submission Links
 

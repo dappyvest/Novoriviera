@@ -712,7 +712,7 @@ Public competition details include stages via `GET /api/competitions/:id`. The s
 `GET /api/stages/:stageId/submissions`
 
 - Params: `stageId`.
-- Returns approved submissions only, including contestant.
+- Returns visible submissions, including contestant. New submissions are visible immediately; rejected submissions and rejected/eliminated contestants are excluded.
 
 Success:
 
@@ -724,6 +724,10 @@ Success:
     "description": "Optional description",
     "videoUrl": "https://example.com/video.mp4",
     "uploadUrl": "https://example.com/uploaded-file",
+    "cloudinarySecureUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "externalVideoUrl": "https://example.com/video",
+    "tiktokUrl": "https://www.tiktok.com/@novo/video/123",
+    "facebookUrl": "https://facebook.com/reel/123",
     "youtubeUrl": "https://youtube.com/watch?v=abc123",
     "youtubeVideoId": "abc123",
     "thumbnailUrl": "https://img.youtube.com/vi/abc123/hqdefault.jpg",
@@ -791,6 +795,19 @@ Success:
   "competition": {
     "id": "competition-id",
     "title": "Novo Viral Superstar"
+  },
+  "latestSubmission": {
+    "id": "submission-id",
+    "title": "My entry",
+    "videoUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "uploadUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "youtubeUrl": "https://youtube.com/watch?v=abc123",
+    "tiktokUrl": "https://www.tiktok.com/@novo/video/123",
+    "facebookUrl": "https://facebook.com/reel/123",
+    "instagramUrl": "https://instagram.com/reel/123",
+    "externalVideoUrl": "https://example.com/video",
+    "thumbnailUrl": "https://example.com/thumb.jpg",
+    "cloudinarySecureUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4"
   },
   "latestApprovedSubmission": {
     "id": "submission-id",
@@ -936,8 +953,13 @@ Success:
   "uploadUrl": "https://example.com/uploaded-file",
   "youtubeUrl": null,
   "youtubeVideoId": null,
+  "tiktokUrl": null,
+  "facebookUrl": null,
+  "instagramUrl": null,
+  "externalVideoUrl": null,
   "thumbnailUrl": null,
-  "status": "PENDING",
+  "cloudinarySecureUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+  "status": "APPROVED",
   "adminNote": null,
   "contestantId": "contestant-id",
   "stageId": "stage-id",
@@ -994,13 +1016,31 @@ Success:
     "engagementScore": 50,
     "tokenScore": 50,
     "combinedScore": 100,
+    "latestVideoUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "latestUploadUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "latestCloudinarySecureUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "latestExternalVideoUrl": "https://example.com/video",
+    "latestTiktokUrl": "https://www.tiktok.com/@novo/video/123",
+    "latestFacebookUrl": "https://facebook.com/reel/123",
     "latestYoutubeUrl": "https://youtube.com/watch?v=abc123",
-    "latestThumbnailUrl": "https://img.youtube.com/vi/abc123/hqdefault.jpg"
+    "latestThumbnailUrl": "https://img.youtube.com/vi/abc123/hqdefault.jpg",
+    "latestSubmission": {
+      "id": "submission-id",
+      "title": "My entry",
+      "videoUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+      "uploadUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+      "cloudinarySecureUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+      "externalVideoUrl": "https://example.com/video",
+      "tiktokUrl": "https://www.tiktok.com/@novo/video/123",
+      "facebookUrl": "https://facebook.com/reel/123",
+      "youtubeUrl": "https://youtube.com/watch?v=abc123",
+      "thumbnailUrl": "https://img.youtube.com/vi/abc123/hqdefault.jpg"
+    }
   }
 ]
 ```
 
-Registered entrants are included unless their contestant profile is `REJECTED` or `ELIMINATED`. Leaderboard rows include `photoUrl`, `totalVotes`, `totalOnlineEngagement`, `rank`, and `entrantCount`.
+Registered entrants are included unless their contestant profile is `REJECTED` or `ELIMINATED`. Leaderboard rows include `photoUrl`, `totalVotes`, `totalOnlineEngagement`, `rank`, `entrantCount`, and latest visible submission video fields when available.
 
 Common errors: `404` competition not found.
 
@@ -1125,7 +1165,7 @@ Body:
 {
   "contestantId": "contestant-id",
   "stageId": "stage-id",
-  "coinsToSpend": 5
+  "coinsToSpend": 10
 }
 ```
 
@@ -1136,7 +1176,7 @@ Success:
   "vote": {
     "id": "vote-id",
     "source": "COIN",
-    "quantity": 5,
+    "quantity": 1,
     "userId": "user-id",
     "competitionId": "competition-id",
     "stageId": "stage-id",
@@ -1145,20 +1185,22 @@ Success:
   },
   "wallet": {
     "id": "wallet-id",
-    "balance": 105,
+    "balance": 100,
     "userId": "user-id",
     "createdAt": "2026-06-14T00:00:00.000Z",
     "updatedAt": "2026-06-14T00:00:00.000Z"
   },
   "coinTransaction": {
     "id": "transaction-id",
-    "amount": -5,
+    "amount": -10,
     "type": "DEBIT",
     "description": "Vote for contestant Jane Star",
     "reference": null,
     "metadata": {
       "contestantId": "contestant-id",
-      "stageId": "stage-id"
+      "stageId": "stage-id",
+      "coinsToSpend": 10,
+      "votesCredited": 1
     },
     "walletId": "wallet-id",
     "userId": "user-id",
@@ -1176,8 +1218,9 @@ Success:
 
 Rules:
 
-- `coinsToSpend` must be an integer >= `1`.
-- `1` coin equals `1` vote.
+- `coinsToSpend` must be an integer >= `10`.
+- `coinsToSpend` must be divisible by `10`.
+- `10` coins equal `1` vote.
 - Voter wallet must have enough balance.
 - Stage must be `ACTIVE`.
 - Current time must be inside the stage voting window when dates are set.
@@ -1573,7 +1616,7 @@ YouTube body:
 
 Success: submission object. Admin list includes contestant, contestant user, contestant competition, and stage.
 
-All new entries start as `PENDING` and appear in the admin dashboard under **Submissions**. Admins review content after upload, approve valid entries, reject invalid or inappropriate entries, and can update YouTube, TikTok, Facebook, Instagram, external video, and thumbnail links.
+All new entries are stored as `APPROVED`, appear publicly immediately, and appear in the admin dashboard under **Submissions**. Admins moderate content after upload, reject or delete invalid/inappropriate entries, and can update YouTube, TikTok, Facebook, Instagram, external video, and thumbnail links.
 
 Common errors: `400`, `401`, `403`, `404`.
 
@@ -1863,9 +1906,9 @@ Admin-auth routes:
 6. Optional video path: upload video to `/api/uploads/video`, then send `secureUrl` as `videoUrl` and/or `uploadUrl`. Manual URL submission still works.
 7. Registered contestants can submit immediately to open submission stages through `/api/stages/:stageId/submissions`; only `REJECTED` and `ELIMINATED` contestant profiles are blocked.
 8. One submission is allowed per contestant per stage.
-9. Submission starts as `PENDING` and appears in the admin dashboard under **Submissions**; admin removes, rejects, or moderates spam, bots, scammers, invalid, or inappropriate entries through admin contestant/submission status tools.
+9. Submission starts as `APPROVED`, appears publicly immediately, and appears in the admin dashboard under **Submissions**; admin removes, rejects, or moderates spam, bots, scammers, invalid, or inappropriate entries through admin contestant/submission status tools.
 10. Admin can attach YouTube, TikTok, Facebook, Instagram, external video, and thumbnail links through `/api/admin/submissions/:id/youtube`.
-11. Public stage submissions list only approved submissions.
+11. Public stage submissions list visible submissions and exclude only rejected submissions or rejected/eliminated contestants.
 12. TikTok/Facebook/Instagram metrics are entered manually through the admin engagement endpoint; there is no external social API integration yet.
 
 ## Suggested Frontend Routes

@@ -8,6 +8,14 @@ export class VotesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async cast(userId: string, dto: CastVoteDto) {
+    if (dto.coinsToSpend < 10 || dto.coinsToSpend % 10 !== 0) {
+      throw new BadRequestException(
+        'coinsToSpend must be at least 10 and divisible by 10',
+      );
+    }
+
+    const votesToCredit = dto.coinsToSpend / 10;
+
     return this.prisma.$transaction(async (tx) => {
       const contestant = await tx.contestant.findUnique({
         where: { id: dto.contestantId },
@@ -65,6 +73,8 @@ export class VotesService {
           metadata: {
             contestantId: contestant.id,
             stageId: stage.id,
+            coinsToSpend: dto.coinsToSpend,
+            votesCredited: votesToCredit,
           },
         },
       });
@@ -76,13 +86,13 @@ export class VotesService {
           stageId: stage.id,
           competitionId: contestant.competitionId,
           source: VoteSource.COIN,
-          quantity: dto.coinsToSpend,
+          quantity: votesToCredit,
         },
       });
 
       const updatedContestant = await tx.contestant.update({
         where: { id: contestant.id },
-        data: { totalVotes: { increment: dto.coinsToSpend } },
+        data: { totalVotes: { increment: votesToCredit } },
       });
 
       return { vote, wallet: updatedWallet, coinTransaction, contestant: updatedContestant };

@@ -4,7 +4,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ContestantStatus, Prisma, UserRole } from '@prisma/client';
+import {
+  ContestantStatus,
+  Prisma,
+  SubmissionStatus,
+  UserRole,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateContestantDto } from './dto/create-contestant.dto';
 import { UpdateEngagementDto } from './dto/update-engagement.dto';
@@ -15,6 +20,8 @@ const publicContestantBlockedStatuses = [
   ContestantStatus.REJECTED,
   ContestantStatus.ELIMINATED,
 ];
+
+const publicSubmissionBlockedStatuses = [SubmissionStatus.REJECTED];
 
 @Injectable()
 export class ContestantsService {
@@ -128,7 +135,7 @@ export class ContestantsService {
       include: {
         competition: true,
         submissions: {
-          where: { status: 'APPROVED' },
+          where: { status: { notIn: publicSubmissionBlockedStatuses } },
           orderBy: { updatedAt: 'desc' },
           take: 1,
         },
@@ -169,6 +176,24 @@ export class ContestantsService {
       rank: rankIndex >= 0 ? rankIndex + 1 : null,
       entrantCount: entrants.length,
       competition: contestant.competition,
+      latestSubmission: latestSubmission
+        ? {
+            id: latestSubmission.id,
+            title: latestSubmission.title,
+            description: latestSubmission.description,
+            videoUrl: latestSubmission.videoUrl,
+            uploadUrl: latestSubmission.uploadUrl,
+            youtubeUrl: latestSubmission.youtubeUrl,
+            tiktokUrl: latestSubmission.tiktokUrl,
+            facebookUrl: latestSubmission.facebookUrl,
+            instagramUrl: latestSubmission.instagramUrl,
+            externalVideoUrl: latestSubmission.externalVideoUrl,
+            thumbnailUrl: latestSubmission.thumbnailUrl,
+            cloudinarySecureUrl: latestSubmission.cloudinarySecureUrl,
+            createdAt: latestSubmission.createdAt,
+            updatedAt: latestSubmission.updatedAt,
+          }
+        : null,
       latestApprovedSubmission: latestSubmission
         ? {
             id: latestSubmission.id,

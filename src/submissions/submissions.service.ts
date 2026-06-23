@@ -18,6 +18,10 @@ const blockedContestantStatuses: ContestantStatus[] = [
   ContestantStatus.ELIMINATED,
 ];
 
+const publicSubmissionBlockedStatuses: SubmissionStatus[] = [
+  SubmissionStatus.REJECTED,
+];
+
 @Injectable()
 export class SubmissionsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -61,7 +65,7 @@ export class SubmissionsService {
             | undefined,
           contestantId: contestant.id,
           stageId,
-          status: SubmissionStatus.PENDING,
+          status: SubmissionStatus.APPROVED,
         },
       });
     } catch (error) {
@@ -84,7 +88,11 @@ export class SubmissionsService {
 
   findByStage(stageId: string) {
     return this.prisma.submission.findMany({
-      where: { stageId, status: 'APPROVED' },
+      where: {
+        stageId,
+        status: { notIn: publicSubmissionBlockedStatuses },
+        contestant: { status: { notIn: blockedContestantStatuses } },
+      },
       include: { contestant: true },
       orderBy: { createdAt: 'desc' },
     });
@@ -117,6 +125,11 @@ export class SubmissionsService {
       where: { id },
       data: dto,
     });
+  }
+
+  async remove(id: string) {
+    await this.ensureSubmission(id);
+    return this.prisma.submission.delete({ where: { id } });
   }
 
   private ensureSubmissionWindow(stage: {

@@ -9,6 +9,7 @@ import {
   CompetitionStatus,
   ContestantStatus,
   Prisma,
+  SubmissionStatus,
   UserRole,
   WinnerPlacement,
 } from '@prisma/client';
@@ -20,6 +21,8 @@ const publicContestantBlockedStatuses = [
   ContestantStatus.REJECTED,
   ContestantStatus.ELIMINATED,
 ];
+
+const publicSubmissionBlockedStatuses = [SubmissionStatus.REJECTED];
 
 @Injectable()
 export class CompetitionsService {
@@ -110,7 +113,7 @@ export class CompetitionsService {
       },
       include: {
         submissions: {
-          where: { status: 'APPROVED' },
+          where: { status: { notIn: publicSubmissionBlockedStatuses } },
           orderBy: { updatedAt: 'desc' },
           take: 1,
         },
@@ -170,22 +173,50 @@ export class CompetitionsService {
     const entrantCount = ranked.length;
 
     return ranked.map(
-      ({ contestant, engagementScore, tokenScore, combinedScore }, index) => ({
-        rank: index + 1,
-        entrantCount,
-        contestantId: contestant.id,
-        displayName: contestant.displayName,
-        photoUrl: contestant.photoUrl,
-        status: contestant.status,
-        isPremium: contestant.isPremium,
-        totalVotes: contestant.totalVotes,
-        totalOnlineEngagement: contestant.totalOnlineEngagement,
-        engagementScore: Number(engagementScore.toFixed(2)),
-        tokenScore: Number(tokenScore.toFixed(2)),
-        combinedScore: Number(combinedScore.toFixed(2)),
-        latestYoutubeUrl: contestant.submissions?.[0]?.youtubeUrl ?? null,
-        latestThumbnailUrl: contestant.submissions?.[0]?.thumbnailUrl ?? null,
-      }),
+      ({ contestant, engagementScore, tokenScore, combinedScore }, index) => {
+        const latestSubmission = contestant.submissions?.[0] ?? null;
+
+        return {
+          rank: index + 1,
+          entrantCount,
+          contestantId: contestant.id,
+          displayName: contestant.displayName,
+          photoUrl: contestant.photoUrl,
+          status: contestant.status,
+          isPremium: contestant.isPremium,
+          totalVotes: contestant.totalVotes,
+          totalOnlineEngagement: contestant.totalOnlineEngagement,
+          engagementScore: Number(engagementScore.toFixed(2)),
+          tokenScore: Number(tokenScore.toFixed(2)),
+          combinedScore: Number(combinedScore.toFixed(2)),
+          latestVideoUrl: latestSubmission?.videoUrl ?? null,
+          latestUploadUrl: latestSubmission?.uploadUrl ?? null,
+          latestCloudinarySecureUrl:
+            latestSubmission?.cloudinarySecureUrl ?? null,
+          latestExternalVideoUrl: latestSubmission?.externalVideoUrl ?? null,
+          latestTiktokUrl: latestSubmission?.tiktokUrl ?? null,
+          latestFacebookUrl: latestSubmission?.facebookUrl ?? null,
+          latestYoutubeUrl: latestSubmission?.youtubeUrl ?? null,
+          latestThumbnailUrl: latestSubmission?.thumbnailUrl ?? null,
+          latestSubmission: latestSubmission
+            ? {
+                id: latestSubmission.id,
+                title: latestSubmission.title,
+                description: latestSubmission.description,
+                videoUrl: latestSubmission.videoUrl,
+                uploadUrl: latestSubmission.uploadUrl,
+                cloudinarySecureUrl: latestSubmission.cloudinarySecureUrl,
+                externalVideoUrl: latestSubmission.externalVideoUrl,
+                tiktokUrl: latestSubmission.tiktokUrl,
+                facebookUrl: latestSubmission.facebookUrl,
+                youtubeUrl: latestSubmission.youtubeUrl,
+                thumbnailUrl: latestSubmission.thumbnailUrl,
+                createdAt: latestSubmission.createdAt,
+                updatedAt: latestSubmission.updatedAt,
+              }
+            : null,
+        };
+      },
     );
   }
 

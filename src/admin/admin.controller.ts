@@ -260,4 +260,9 @@ export class AdminController {
   ) {
     return this.submissionsService.updateYoutube(id, dto);
   }
+
+  @Delete('submissions/:id')
+  deleteSubmission(@Param('id') id: string) {
+    return this.submissionsService.remove(id);
+  }
 }
