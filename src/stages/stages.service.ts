@@ -4,10 +4,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, StageStatus } from '@prisma/client';
+import { ContestantStatus, Prisma, StageStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateStageDto } from './dto/create-stage.dto';
 import { UpdateStageDto } from './dto/update-stage.dto';
+
+const eliminationBlockedStatuses = [
+  ContestantStatus.REJECTED,
+  ContestantStatus.ELIMINATED,
+];
 
 @Injectable()
 export class StagesService {
@@ -96,7 +101,7 @@ export class StagesService {
     const contestants = await this.prisma.contestant.findMany({
       where: {
         competitionId: stage.competitionId,
-        status: 'APPROVED',
+        status: { notIn: eliminationBlockedStatuses },
       },
       orderBy: [
         { totalVotes: 'asc' },
@@ -236,7 +241,9 @@ export class StagesService {
       votingStartDate: dto.votingStartDate
         ? new Date(dto.votingStartDate)
         : undefined,
-      votingEndDate: dto.votingEndDate ? new Date(dto.votingEndDate) : undefined,
+      votingEndDate: dto.votingEndDate
+        ? new Date(dto.votingEndDate)
+        : undefined,
     };
   }
 
@@ -258,7 +265,9 @@ export class StagesService {
       votingStartDate: dto.votingStartDate
         ? new Date(dto.votingStartDate)
         : undefined,
-      votingEndDate: dto.votingEndDate ? new Date(dto.votingEndDate) : undefined,
+      votingEndDate: dto.votingEndDate
+        ? new Date(dto.votingEndDate)
+        : undefined,
       eliminationPercentage: dto.eliminationPercentage,
       competitionId,
     };

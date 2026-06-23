@@ -1,4 +1,8 @@
-import { INestApplication, RequestMethod, ValidationPipe } from '@nestjs/common';
+import {
+  INestApplication,
+  RequestMethod,
+  ValidationPipe,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   CompetitionStatus,
@@ -14,7 +18,16 @@ import {
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { createHmac } from 'crypto';
+import { Writable } from 'stream';
+import { v2 as cloudinary } from 'cloudinary';
 import { PrismaService } from '../src/prisma/prisma.service';
+
+jest.mock('cloudinary', () => ({
+  v2: {
+    config: jest.fn(),
+    uploader: { upload_stream: jest.fn() },
+  },
+}));
 
 process.env.DATABASE_URL ??=
   'postgresql://postgres:postgres@localhost:5432/novorivera_test?schema=public';
@@ -305,18 +318,21 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
   const engagementBreakdowns: MockEngagementBreakdown[] = [];
   const competitionWinners: MockCompetitionWinner[] = [];
   const adminAuditLogs: MockAdminAuditLog[] = [];
+  const cloudinaryUploadStreamMock = cloudinary.uploader
+    .upload_stream as jest.Mock;
 
   const prismaMock = {
     $transaction: jest.fn((callback: (tx: any) => unknown) =>
       callback(prismaMock),
     ),
     user: {
-      findUnique: jest.fn(({ where }: { where: { id?: string; email?: string } }) =>
-        Promise.resolve(
-          users.find(
-            (user) => user.id === where.id || user.email === where.email,
-          ) ?? null,
-        ),
+      findUnique: jest.fn(
+        ({ where }: { where: { id?: string; email?: string } }) =>
+          Promise.resolve(
+            users.find(
+              (user) => user.id === where.id || user.email === where.email,
+            ) ?? null,
+          ),
       ),
       findMany: jest.fn(() => Promise.resolve([...users])),
       create: jest.fn(({ data }) => {
@@ -383,13 +399,16 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         Promise.resolve(
           competitions.find((item) => {
             if (where.id && item.id !== where.id) return false;
-            if (where.status?.in && !where.status.in.includes(item.status)) return false;
+            if (where.status?.in && !where.status.in.includes(item.status))
+              return false;
             return true;
           }) ?? null,
         ),
       ),
       findUnique: jest.fn(({ where }) =>
-        Promise.resolve(competitions.find((item) => item.id === where.id) ?? null),
+        Promise.resolve(
+          competitions.find((item) => item.id === where.id) ?? null,
+        ),
       ),
       update: jest.fn(({ where, data }) => {
         const competition = competitions.find((item) => item.id === where.id);
@@ -423,7 +442,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         return Promise.resolve(stage);
       }),
       findMany: jest.fn(({ where }) =>
-        Promise.resolve(stages.filter((stage) => stage.competitionId === where.competitionId)),
+        Promise.resolve(
+          stages.filter((stage) => stage.competitionId === where.competitionId),
+        ),
       ),
       findFirst: jest.fn(({ where }) =>
         Promise.resolve(
@@ -453,7 +474,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
     contestant: {
       findUnique: jest.fn(({ where }) => {
         if (where.id) {
-          return Promise.resolve(contestants.find((item) => item.id === where.id) ?? null);
+          return Promise.resolve(
+            contestants.find((item) => item.id === where.id) ?? null,
+          );
         }
         return Promise.resolve(
           contestants.find(
@@ -465,11 +488,22 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       }),
       findMany: jest.fn(({ where } = {}) => {
         let result = [...contestants];
-        if (where?.userId) result = result.filter((item) => item.userId === where.userId);
+        if (where?.userId)
+          result = result.filter((item) => item.userId === where.userId);
         if (where?.competitionId) {
-          result = result.filter((item) => item.competitionId === where.competitionId);
+          result = result.filter(
+            (item) => item.competitionId === where.competitionId,
+          );
         }
-        if (where?.status) result = result.filter((item) => item.status === where.status);
+        if (where?.status) {
+          if (where.status.notIn) {
+            result = result.filter(
+              (item) => !where.status.notIn.includes(item.status),
+            );
+          } else {
+            result = result.filter((item) => item.status === where.status);
+          }
+        }
         return Promise.resolve(
           result.map((contestant) => ({
             ...contestant,
@@ -490,13 +524,22 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       findFirst: jest.fn(({ where }) => {
         const contestant = contestants.find((item) => {
           if (where.id && item.id !== where.id) return false;
-          if (where.status && item.status !== where.status) return false;
+          if (where.status?.notIn && where.status.notIn.includes(item.status))
+            return false;
+          if (
+            where.status &&
+            !where.status.notIn &&
+            item.status !== where.status
+          )
+            return false;
           return true;
         });
         if (!contestant) return Promise.resolve(null);
         return Promise.resolve({
           ...contestant,
-          competition: competitions.find((item) => item.id === contestant.competitionId),
+          competition: competitions.find(
+            (item) => item.id === contestant.competitionId,
+          ),
           submissions: submissions
             .filter(
               (submission) =>
@@ -535,7 +578,8 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
           delete data.totalVotes;
         }
         if (data.totalOnlineEngagement?.increment) {
-          contestant.totalOnlineEngagement += data.totalOnlineEngagement.increment;
+          contestant.totalOnlineEngagement +=
+            data.totalOnlineEngagement.increment;
           delete data.totalOnlineEngagement;
         }
         Object.assign(contestant, data, { updatedAt: new Date() });
@@ -576,24 +620,32 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       }),
       findMany: jest.fn(({ where } = {}) => {
         let result = [...submissions];
-        if (where?.stageId) result = result.filter((item) => item.stageId === where.stageId);
-        if (where?.status) result = result.filter((item) => item.status === where.status);
+        if (where?.stageId)
+          result = result.filter((item) => item.stageId === where.stageId);
+        if (where?.status)
+          result = result.filter((item) => item.status === where.status);
         if (where?.contestant?.userId) {
           const contestantIds = contestants
             .filter((item) => item.userId === where.contestant.userId)
             .map((item) => item.id);
-          result = result.filter((item) => contestantIds.includes(item.contestantId));
+          result = result.filter((item) =>
+            contestantIds.includes(item.contestantId),
+          );
         }
         return Promise.resolve(
           result.map((submission) => ({
             ...submission,
-            contestant: contestants.find((item) => item.id === submission.contestantId),
+            contestant: contestants.find(
+              (item) => item.id === submission.contestantId,
+            ),
             stage: stages.find((item) => item.id === submission.stageId),
           })),
         );
       }),
       findUnique: jest.fn(({ where }) =>
-        Promise.resolve(submissions.find((item) => item.id === where.id) ?? null),
+        Promise.resolve(
+          submissions.find((item) => item.id === where.id) ?? null,
+        ),
       ),
       update: jest.fn(({ where, data }) => {
         const submission = submissions.find((item) => item.id === where.id);
@@ -606,7 +658,8 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       findUnique: jest.fn(({ where }) =>
         Promise.resolve(
           wallets.find(
-            (wallet) => wallet.id === where.id || wallet.userId === where.userId,
+            (wallet) =>
+              wallet.id === where.id || wallet.userId === where.userId,
           ) ?? null,
         ),
       ),
@@ -649,7 +702,8 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       }),
       findMany: jest.fn(({ where } = {}) => {
         let result = [...coinTransactions];
-        if (where?.walletId) result = result.filter((item) => item.walletId === where.walletId);
+        if (where?.walletId)
+          result = result.filter((item) => item.walletId === where.walletId);
         return Promise.resolve(result);
       }),
     },
@@ -670,15 +724,23 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       }),
       findMany: jest.fn(({ where } = {}) => {
         let result = [...votes];
-        if (where?.contestantId) result = result.filter((item) => item.contestantId === where.contestantId);
-        if (where?.stageId) result = result.filter((item) => item.stageId === where.stageId);
+        if (where?.contestantId)
+          result = result.filter(
+            (item) => item.contestantId === where.contestantId,
+          );
+        if (where?.stageId)
+          result = result.filter((item) => item.stageId === where.stageId);
         return Promise.resolve(
           result.map((vote) => ({
             ...vote,
             user: users.find((item) => item.id === vote.userId),
-            contestant: contestants.find((item) => item.id === vote.contestantId),
+            contestant: contestants.find(
+              (item) => item.id === vote.contestantId,
+            ),
             stage: stages.find((item) => item.id === vote.stageId),
-            competition: competitions.find((item) => item.id === vote.competitionId),
+            competition: competitions.find(
+              (item) => item.id === vote.competitionId,
+            ),
           })),
         );
       }),
@@ -706,7 +768,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         return Promise.resolve([...result]);
       }),
       findUnique: jest.fn(({ where }) =>
-        Promise.resolve(coinPackages.find((item) => item.id === where.id) ?? null),
+        Promise.resolve(
+          coinPackages.find((item) => item.id === where.id) ?? null,
+        ),
       ),
       update: jest.fn(({ where, data }) => {
         const coinPackage = coinPackages.find((item) => item.id === where.id);
@@ -744,7 +808,8 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       findUnique: jest.fn(({ where }) =>
         Promise.resolve(
           payments.find(
-            (payment) => payment.id === where.id || payment.reference === where.reference,
+            (payment) =>
+              payment.id === where.id || payment.reference === where.reference,
           ) ?? null,
         ),
       ),
@@ -827,7 +892,11 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         );
       }),
       deleteMany: jest.fn(({ where }) => {
-        for (let index = competitionWinners.length - 1; index >= 0; index -= 1) {
+        for (
+          let index = competitionWinners.length - 1;
+          index >= 0;
+          index -= 1
+        ) {
           if (competitionWinners[index].competitionId === where.competitionId) {
             competitionWinners.splice(index, 1);
           }
@@ -853,8 +922,12 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         competitionWinners.push(winner);
         return Promise.resolve({
           ...winner,
-          contestant: contestants.find((item) => item.id === winner.contestantId),
-          competition: competitions.find((item) => item.id === winner.competitionId),
+          contestant: contestants.find(
+            (item) => item.id === winner.contestantId,
+          ),
+          competition: competitions.find(
+            (item) => item.id === winner.competitionId,
+          ),
         });
       }),
     },
@@ -894,7 +967,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
     siteSettings: {
       findUnique: jest.fn(({ where }) =>
         Promise.resolve(
-          siteSettings.find((item) => item.singletonKey === where.singletonKey) ?? null,
+          siteSettings.find(
+            (item) => item.singletonKey === where.singletonKey,
+          ) ?? null,
         ),
       ),
       create: jest.fn(({ data }) => {
@@ -919,7 +994,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         return Promise.resolve(record);
       }),
       update: jest.fn(({ where, data }) => {
-        const record = siteSettings.find((item) => item.singletonKey === where.singletonKey);
+        const record = siteSettings.find(
+          (item) => item.singletonKey === where.singletonKey,
+        );
         if (!record) throw new Error('not found');
         Object.assign(record, data);
         return Promise.resolve(record);
@@ -928,7 +1005,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
     homepageContent: {
       findUnique: jest.fn(({ where }) =>
         Promise.resolve(
-          homepageContent.find((item) => item.singletonKey === where.singletonKey) ?? null,
+          homepageContent.find(
+            (item) => item.singletonKey === where.singletonKey,
+          ) ?? null,
         ),
       ),
       create: jest.fn(({ data }) => {
@@ -950,7 +1029,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         return Promise.resolve(record);
       }),
       update: jest.fn(({ where, data }) => {
-        const record = homepageContent.find((item) => item.singletonKey === where.singletonKey);
+        const record = homepageContent.find(
+          (item) => item.singletonKey === where.singletonKey,
+        );
         if (!record) throw new Error('not found');
         Object.assign(record, data);
         return Promise.resolve(record);
@@ -959,7 +1040,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
     competitionRules: {
       findUnique: jest.fn(({ where }) =>
         Promise.resolve(
-          competitionRules.find((item) => item.singletonKey === where.singletonKey) ?? null,
+          competitionRules.find(
+            (item) => item.singletonKey === where.singletonKey,
+          ) ?? null,
         ),
       ),
       create: jest.fn(({ data }) => {
@@ -974,7 +1057,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         return Promise.resolve(record);
       }),
       update: jest.fn(({ where, data }) => {
-        const record = competitionRules.find((item) => item.singletonKey === where.singletonKey);
+        const record = competitionRules.find(
+          (item) => item.singletonKey === where.singletonKey,
+        );
         if (!record) throw new Error('not found');
         Object.assign(record, data);
         return Promise.resolve(record);
@@ -998,7 +1083,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         const result = where?.isActive
           ? faqs.filter((faq) => faq.isActive === where.isActive)
           : faqs;
-        return Promise.resolve([...result].sort((a, b) => a.sortOrder - b.sortOrder));
+        return Promise.resolve(
+          [...result].sort((a, b) => a.sortOrder - b.sortOrder),
+        );
       }),
       findUnique: jest.fn(({ where }) =>
         Promise.resolve(faqs.find((faq) => faq.id === where.id) ?? null),
@@ -1034,10 +1121,14 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         const result = where?.isActive
           ? sponsors.filter((sponsor) => sponsor.isActive === where.isActive)
           : sponsors;
-        return Promise.resolve([...result].sort((a, b) => a.sortOrder - b.sortOrder));
+        return Promise.resolve(
+          [...result].sort((a, b) => a.sortOrder - b.sortOrder),
+        );
       }),
       findUnique: jest.fn(({ where }) =>
-        Promise.resolve(sponsors.find((sponsor) => sponsor.id === where.id) ?? null),
+        Promise.resolve(
+          sponsors.find((sponsor) => sponsor.id === where.id) ?? null,
+        ),
       ),
       update: jest.fn(({ where, data }) => {
         const sponsor = sponsors.find((item) => item.id === where.id);
@@ -1069,7 +1160,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       }),
       findMany: jest.fn(() => Promise.resolve([...contactMessages])),
       findUnique: jest.fn(({ where }) =>
-        Promise.resolve(contactMessages.find((message) => message.id === where.id) ?? null),
+        Promise.resolve(
+          contactMessages.find((message) => message.id === where.id) ?? null,
+        ),
       ),
       update: jest.fn(({ where, data }) => {
         const message = contactMessages.find((item) => item.id === where.id);
@@ -1101,6 +1194,29 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
     competitionWinners.length = 0;
     adminAuditLogs.length = 0;
     jest.clearAllMocks();
+    cloudinaryUploadStreamMock.mockImplementation(
+      (
+        _options: unknown,
+        callback: (error: undefined, result: Record<string, unknown>) => void,
+      ) =>
+        new Writable({
+          write(_chunk, _encoding, done) {
+            done();
+          },
+          final(done) {
+            callback(undefined, {
+              secure_url:
+                'https://res.cloudinary.com/test/video/upload/entry.mp4',
+              public_id: 'novorivera-test/entry',
+              resource_type: 'video',
+              format: 'mp4',
+              bytes: 1024,
+              duration: 12.5,
+            });
+            done();
+          },
+        }),
+    );
     jest.spyOn(global, 'fetch').mockReset();
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -1132,11 +1248,13 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
   });
 
   async function registerUser(email: string) {
-    return request(app.getHttpServer()).post('/api/auth/register').send({
-      name: email.includes('admin') ? 'Admin User' : 'Jane Rivera',
-      email,
-      password: 'password123',
-    });
+    return request(app.getHttpServer())
+      .post('/api/auth/register')
+      .send({
+        name: email.includes('admin') ? 'Admin User' : 'Jane Rivera',
+        email,
+        password: 'password123',
+      });
   }
 
   it('runs the competition, contestant, submission, and leaderboard flow', async () => {
@@ -1254,12 +1372,15 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       .expect(400);
 
     const leaderboardResponse = await request(app.getHttpServer())
-      .get(`/api/competitions/${competitionResponse.body.id}/leaderboard?mode=votes`)
+      .get(
+        `/api/competitions/${competitionResponse.body.id}/leaderboard?mode=votes`,
+      )
       .expect(200);
 
     expect(leaderboardResponse.body).toHaveLength(1);
     expect(leaderboardResponse.body[0]).toMatchObject({
       rank: 1,
+      entrantCount: 1,
       contestantId: contestantResponse.body.id,
       displayName: 'Jane Star',
       status: ContestantStatus.APPROVED,
@@ -1295,18 +1416,28 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       .send({ status: ContestantStatus.APPROVED })
       .expect(200);
 
-    const fetchMock = jest.spyOn(global, 'fetch');
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        secure_url:
-          'https://res.cloudinary.com/test/image/upload/contestants/photo.jpg',
-        public_id: 'novorivera-test/contestants/photo',
-        resource_type: 'image',
-        format: 'jpg',
-        bytes: 2048,
-      }),
-    } as Response);
+    cloudinaryUploadStreamMock.mockImplementationOnce(
+      (
+        _options: unknown,
+        callback: (error: undefined, result: Record<string, unknown>) => void,
+      ) =>
+        new Writable({
+          write(_chunk, _encoding, done) {
+            done();
+          },
+          final(done) {
+            callback(undefined, {
+              secure_url:
+                'https://res.cloudinary.com/test/image/upload/contestants/photo.jpg',
+              public_id: 'novorivera-test/contestants/photo',
+              resource_type: 'image',
+              format: 'jpg',
+              bytes: 2048,
+            });
+            done();
+          },
+        }),
+    );
 
     const uploadResponse = await request(app.getHttpServer())
       .post('/api/uploads/image')
@@ -1327,9 +1458,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
     });
 
     await request(app.getHttpServer())
-      .patch(
-        `/api/contestants/me/${competitionResponse.body.id}/photo`,
-      )
+      .patch(`/api/contestants/me/${competitionResponse.body.id}/photo`)
       .set('Authorization', `Bearer ${ownerAuth.body.token}`)
       .send({
         photoUrl: 'not-a-url',
@@ -1346,9 +1475,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       },
     };
     const updateResponse = await request(app.getHttpServer())
-      .patch(
-        `/api/contestants/me/${competitionResponse.body.id}/photo`,
-      )
+      .patch(`/api/contestants/me/${competitionResponse.body.id}/photo`)
       .set('Authorization', `Bearer ${ownerAuth.body.token}`)
       .send(photoPayload)
       .expect(200);
@@ -1356,9 +1483,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
     expect(updateResponse.body).toMatchObject(photoPayload);
 
     await request(app.getHttpServer())
-      .patch(
-        `/api/contestants/me/${competitionResponse.body.id}/photo`,
-      )
+      .patch(`/api/contestants/me/${competitionResponse.body.id}/photo`)
       .set('Authorization', `Bearer ${otherAuth.body.token}`)
       .send(photoPayload)
       .expect(404);
@@ -1529,19 +1654,6 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
     const adminAuth = await registerUser('admin@example.com');
     users[0].role = UserRole.ADMIN;
 
-    const fetchMock = jest.spyOn(global, 'fetch');
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        secure_url: 'https://res.cloudinary.com/test/video/upload/entry.mp4',
-        public_id: 'novorivera-test/entry',
-        resource_type: 'video',
-        format: 'mp4',
-        bytes: 1024,
-        duration: 12.5,
-      }),
-    } as Response);
-
     const uploadResponse = await request(app.getHttpServer())
       .post('/api/uploads/video')
       .set('Authorization', `Bearer ${adminAuth.body.token}`)
@@ -1602,18 +1714,6 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       .send({ displayName: 'Second Star' })
       .expect(201);
 
-    await request(app.getHttpServer())
-      .patch(`/api/admin/contestants/${firstContestantResponse.body.id}/status`)
-      .set('Authorization', `Bearer ${adminAuth.body.token}`)
-      .send({ status: ContestantStatus.APPROVED })
-      .expect(200);
-
-    await request(app.getHttpServer())
-      .patch(`/api/admin/contestants/${secondContestantResponse.body.id}/status`)
-      .set('Authorization', `Bearer ${adminAuth.body.token}`)
-      .send({ status: ContestantStatus.APPROVED })
-      .expect(200);
-
     const submissionResponse = await request(app.getHttpServer())
       .post(`/api/stages/${stageResponse.body.id}/submissions`)
       .set('Authorization', `Bearer ${firstUserAuth.body.token}`)
@@ -1653,6 +1753,12 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
     expect(publicProfileResponse.body).toMatchObject({
       id: firstContestantResponse.body.id,
       displayName: 'First Star',
+      photoUrl: null,
+      status: ContestantStatus.PENDING,
+      totalVotes: 0,
+      totalOnlineEngagement: 0,
+      rank: 1,
+      entrantCount: 2,
       latestApprovedSubmission: {
         youtubeUrl: 'https://youtube.com/watch?v=abc123',
         tiktokUrl: 'https://www.tiktok.com/@novo/video/123',
@@ -1663,7 +1769,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
     expect(publicProfileResponse.body.user).toBeUndefined();
 
     await request(app.getHttpServer())
-      .post(`/api/admin/contestants/${firstContestantResponse.body.id}/engagement`)
+      .post(
+        `/api/admin/contestants/${firstContestantResponse.body.id}/engagement`,
+      )
       .set('Authorization', `Bearer ${adminAuth.body.token}`)
       .send({
         stageId: stageResponse.body.id,
@@ -1678,7 +1786,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       .expect(201);
 
     await request(app.getHttpServer())
-      .post(`/api/admin/contestants/${secondContestantResponse.body.id}/engagement`)
+      .post(
+        `/api/admin/contestants/${secondContestantResponse.body.id}/engagement`,
+      )
       .set('Authorization', `Bearer ${adminAuth.body.token}`)
       .send({ onlineEngagementCount: 50 })
       .expect(201);
@@ -1890,7 +2000,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       .set('Authorization', `Bearer ${userAuth.body.token}`)
       .expect(200);
 
-    expect(wallets.find((wallet) => wallet.userId === users[1].id)?.balance).toBe(110);
+    expect(
+      wallets.find((wallet) => wallet.userId === users[1].id)?.balance,
+    ).toBe(110);
 
     fetchMock.mockResolvedValueOnce({
       ok: true,
@@ -1936,7 +2048,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       .send(webhookPayload)
       .expect(201);
 
-    expect(wallets.find((wallet) => wallet.userId === users[1].id)?.balance).toBe(220);
+    expect(
+      wallets.find((wallet) => wallet.userId === users[1].id)?.balance,
+    ).toBe(220);
 
     await request(app.getHttpServer())
       .get('/api/admin/payments')
@@ -1979,7 +2093,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       .set('Authorization', `Bearer ${adminAuth.body.token}`)
       .send({
         question: 'How do I vote?',
-        answer: 'Buy internal coins and vote for approved contestants.',
+        answer: 'Buy internal coins and vote for registered contestants.',
         sortOrder: 2,
         isActive: true,
       })

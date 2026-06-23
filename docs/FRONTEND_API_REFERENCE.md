@@ -571,7 +571,7 @@ Success examples:
   {
     "id": "faq-id",
     "question": "How do I vote?",
-    "answer": "Buy internal coins and vote for approved contestants.",
+    "answer": "Buy internal coins and vote for registered contestants.",
     "sortOrder": 1,
     "isActive": true,
     "createdAt": "2026-06-14T00:00:00.000Z",
@@ -769,7 +769,7 @@ Common errors: `401`, `403`, `404`.
 
 `GET /api/contestants/:id`
 
-Returns only approved contestants. It does not expose private user data.
+Returns registered entrants, excluding only `REJECTED` and `ELIMINATED` contestants. It does not expose private user data.
 
 Success:
 
@@ -786,6 +786,8 @@ Success:
   "premiumExpiresAt": null,
   "totalVotes": 100,
   "totalOnlineEngagement": 150,
+  "rank": 1,
+  "entrantCount": 25,
   "competition": {
     "id": "competition-id",
     "title": "Novo Viral Superstar"
@@ -809,7 +811,7 @@ Success:
 }
 ```
 
-Common errors: `404` when contestant is not approved or does not exist.
+Common errors: `404` when contestant is rejected, eliminated, or does not exist.
 
 `PATCH /api/contestants/me/:competitionId/photo`
 
@@ -826,7 +828,7 @@ Upload an `image/*` file to `POST /api/uploads/image`, then send its returned va
 }
 ```
 
-`photoUrl` must be a valid HTTPS URL. The current user must own the contestant profile for `competitionId`. The response includes the updated contestant, including `photoUrl`, `photoPublicId`, and `photoMeta`. Public contestant profiles and leaderboard entries expose only `photoUrl`; owner and admin contestant responses include all three fields.
+`photoUrl` must be a valid HTTPS URL. The current user must own the contestant profile for `competitionId`; no approval status is required for photo upload. The response includes the updated contestant, including `photoUrl`, `photoPublicId`, and `photoMeta`. Public contestant profiles and leaderboard entries expose only `photoUrl`; owner and admin contestant responses include all three fields.
 
 Common errors: `400` invalid URL/body, `401`, `404` contestant profile not found for the current user and competition.
 
@@ -947,11 +949,11 @@ Success:
 Rules:
 
 - Stage must exist.
-- Current user must have a `PENDING` or `APPROVED` contestant profile in the stage competition. `REJECTED` and `ELIMINATED` contestants receive `Only active contestants can submit entries.`
+- Current user must have a contestant profile in the stage competition. Missing profiles should register first through `/api/competitions/:competitionId/contestants`. `REJECTED` and `ELIMINATED` contestants receive `Your account or contestant profile is not allowed to submit entries. Please contact support.`
 - Current time must be inside the stage submission window when dates are set.
 - One submission per contestant per stage.
 
-Common errors: `400` outside window or inactive contestant, `401`, `404`, `409`.
+Common errors: `400` outside window, missing contestant registration, or blocked contestant profile; `401`, `404`, `409`.
 
 ### Leaderboard
 
@@ -981,6 +983,7 @@ Success:
 [
   {
     "rank": 1,
+    "entrantCount": 25,
     "contestantId": "contestant-id",
     "displayName": "Jane Star",
     "photoUrl": "https://res.cloudinary.com/cloud/image/upload/novorivera/photo.jpg",
@@ -997,7 +1000,7 @@ Success:
 ]
 ```
 
-Only `APPROVED` contestants are included.
+Registered entrants are included unless their contestant profile is `REJECTED` or `ELIMINATED`. Leaderboard rows include `photoUrl`, `totalVotes`, `totalOnlineEngagement`, `rank`, and `entrantCount`.
 
 Common errors: `404` competition not found.
 
@@ -1180,7 +1183,7 @@ Rules:
 - Current time must be inside the stage voting window when dates are set.
 - Contestant must be in the same competition as the stage.
 - Rejected or eliminated contestants cannot receive votes.
-- The code does not block votes for `PENDING` contestants; frontend should prefer approved contestants from leaderboard/submissions.
+- The code does not block votes for `PENDING` contestants; registered entrants stay visible unless they are `REJECTED` or `ELIMINATED`.
 
 Common errors: `400`, `401`, `404`.
 
@@ -1318,7 +1321,7 @@ Example bodies:
 ```json
 {
   "question": "How do I vote?",
-  "answer": "Buy internal coins and vote for approved contestants.",
+    "answer": "Buy internal coins and vote for registered contestants.",
   "sortOrder": 1,
   "isActive": true
 }
@@ -1422,7 +1425,7 @@ Declare winners body:
 Rules:
 
 - Uses combined leaderboard with 50% engagement and 50% token voting.
-- Stores `FIRST`, `SECOND`, and `THIRD` where enough approved contestants exist.
+- Stores `FIRST`, `SECOND`, and `THIRD` where enough non-rejected, non-eliminated contestants exist.
 - Prize amounts come from `prizeFirst`, `prizeSecond`, and `prizeThird`.
 - If winners already exist, rerun requires `SUPER_ADMIN` or `{ "force": true }`.
 
@@ -1855,12 +1858,12 @@ Admin-auth routes:
 1. User registers/logs in.
 2. Frontend loads competition detail from `/api/competitions/:id`.
 3. User submits contestant profile to `/api/competitions/:competitionId/contestants`.
-4. Contestant starts as `PENDING`; admin can approve or reject the contestant later with `/api/admin/contestants/:id/status`.
+4. Contestant starts as `PENDING`; the entrant can continue immediately. Admin can approve, reject, or eliminate the contestant later with `/api/admin/contestants/:id/status`.
 5. Optional photo path: upload an image to `/api/uploads/image`, then set `secureUrl`, `publicId`, and optional response metadata through `/api/contestants/me/:competitionId/photo`.
 6. Optional video path: upload video to `/api/uploads/video`, then send `secureUrl` as `videoUrl` and/or `uploadUrl`. Manual URL submission still works.
-7. `PENDING` and `APPROVED` contestants can submit immediately to open submission stages through `/api/stages/:stageId/submissions`; `REJECTED` and `ELIMINATED` contestants cannot submit.
+7. Registered contestants can submit immediately to open submission stages through `/api/stages/:stageId/submissions`; only `REJECTED` and `ELIMINATED` contestant profiles are blocked.
 8. One submission is allowed per contestant per stage.
-9. Submission starts as `PENDING` and appears in the admin dashboard under **Submissions**; admin approves or rejects invalid/inappropriate content through `/api/admin/submissions/:id/status`.
+9. Submission starts as `PENDING` and appears in the admin dashboard under **Submissions**; admin removes, rejects, or moderates spam, bots, scammers, invalid, or inappropriate entries through admin contestant/submission status tools.
 10. Admin can attach YouTube, TikTok, Facebook, Instagram, external video, and thumbnail links through `/api/admin/submissions/:id/youtube`.
 11. Public stage submissions list only approved submissions.
 12. TikTok/Facebook/Instagram metrics are entered manually through the admin engagement endpoint; there is no external social API integration yet.

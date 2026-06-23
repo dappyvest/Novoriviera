@@ -11,11 +11,20 @@ import { UpdateEngagementDto } from './dto/update-engagement.dto';
 import { UpdateContestantPremiumDto } from './dto/update-contestant-premium.dto';
 import { UpdateContestantPhotoDto } from './dto/update-contestant-photo.dto';
 
+const publicContestantBlockedStatuses = [
+  ContestantStatus.REJECTED,
+  ContestantStatus.ELIMINATED,
+];
+
 @Injectable()
 export class ContestantsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async register(userId: string, competitionId: string, dto: CreateContestantDto) {
+  async register(
+    userId: string,
+    competitionId: string,
+    dto: CreateContestantDto,
+  ) {
     const existing = await this.prisma.contestant.findUnique({
       where: { competitionId_userId: { competitionId, userId } },
     });
@@ -114,7 +123,7 @@ export class ContestantsService {
     const contestant = await this.prisma.contestant.findFirst({
       where: {
         id,
-        status: ContestantStatus.APPROVED,
+        status: { notIn: publicContestantBlockedStatuses },
       },
       include: {
         competition: true,
@@ -131,6 +140,19 @@ export class ContestantsService {
     }
 
     const latestSubmission = contestant.submissions[0] ?? null;
+    const entrants = await this.prisma.contestant.findMany({
+      where: {
+        competitionId: contestant.competitionId,
+        status: { notIn: publicContestantBlockedStatuses },
+      },
+      orderBy: [
+        { totalVotes: 'desc' },
+        { totalOnlineEngagement: 'desc' },
+        { createdAt: 'asc' },
+      ],
+      select: { id: true },
+    });
+    const rankIndex = entrants.findIndex((entry) => entry.id === contestant.id);
 
     return {
       id: contestant.id,
@@ -144,6 +166,8 @@ export class ContestantsService {
       premiumExpiresAt: contestant.premiumExpiresAt,
       totalVotes: contestant.totalVotes,
       totalOnlineEngagement: contestant.totalOnlineEngagement,
+      rank: rankIndex >= 0 ? rankIndex + 1 : null,
+      entrantCount: entrants.length,
       competition: contestant.competition,
       latestApprovedSubmission: latestSubmission
         ? {
@@ -197,7 +221,11 @@ export class ContestantsService {
     });
   }
 
-  async updateEngagement(id: string, dto: UpdateEngagementDto, actorId: string) {
+  async updateEngagement(
+    id: string,
+    dto: UpdateEngagementDto,
+    actorId: string,
+  ) {
     await this.findOne(id);
     const totalEngagement = this.computeEngagementTotal(dto);
 

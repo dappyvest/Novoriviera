@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import {
   CompetitionStatus,
+  ContestantStatus,
   Prisma,
   UserRole,
   WinnerPlacement,
@@ -14,6 +15,11 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCompetitionDto } from './dto/create-competition.dto';
 import { UpdateCompetitionDto } from './dto/update-competition.dto';
+
+const publicContestantBlockedStatuses = [
+  ContestantStatus.REJECTED,
+  ContestantStatus.ELIMINATED,
+];
 
 @Injectable()
 export class CompetitionsService {
@@ -38,7 +44,11 @@ export class CompetitionsService {
     return this.prisma.competition.findMany({
       where: isAdmin
         ? undefined
-        : { status: { in: [CompetitionStatus.PUBLISHED, CompetitionStatus.ACTIVE] } },
+        : {
+            status: {
+              in: [CompetitionStatus.PUBLISHED, CompetitionStatus.ACTIVE],
+            },
+          },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -96,7 +106,7 @@ export class CompetitionsService {
     const contestants = await this.prisma.contestant.findMany({
       where: {
         competitionId,
-        status: 'APPROVED',
+        status: { notIn: publicContestantBlockedStatuses },
       },
       include: {
         submissions: {
@@ -134,10 +144,7 @@ export class CompetitionsService {
     });
 
     const ranked = scored.sort((a, b) => {
-      if (
-        featuredFirst &&
-        a.contestant.isPremium !== b.contestant.isPremium
-      ) {
+      if (featuredFirst && a.contestant.isPremium !== b.contestant.isPremium) {
         return Number(b.contestant.isPremium) - Number(a.contestant.isPremium);
       }
 
@@ -160,21 +167,26 @@ export class CompetitionsService {
       );
     });
 
-    return ranked.map(({ contestant, engagementScore, tokenScore, combinedScore }, index) => ({
-      rank: index + 1,
-      contestantId: contestant.id,
-      displayName: contestant.displayName,
-      photoUrl: contestant.photoUrl,
-      status: contestant.status,
-      isPremium: contestant.isPremium,
-      totalVotes: contestant.totalVotes,
-      totalOnlineEngagement: contestant.totalOnlineEngagement,
-      engagementScore: Number(engagementScore.toFixed(2)),
-      tokenScore: Number(tokenScore.toFixed(2)),
-      combinedScore: Number(combinedScore.toFixed(2)),
-      latestYoutubeUrl: contestant.submissions?.[0]?.youtubeUrl ?? null,
-      latestThumbnailUrl: contestant.submissions?.[0]?.thumbnailUrl ?? null,
-    }));
+    const entrantCount = ranked.length;
+
+    return ranked.map(
+      ({ contestant, engagementScore, tokenScore, combinedScore }, index) => ({
+        rank: index + 1,
+        entrantCount,
+        contestantId: contestant.id,
+        displayName: contestant.displayName,
+        photoUrl: contestant.photoUrl,
+        status: contestant.status,
+        isPremium: contestant.isPremium,
+        totalVotes: contestant.totalVotes,
+        totalOnlineEngagement: contestant.totalOnlineEngagement,
+        engagementScore: Number(engagementScore.toFixed(2)),
+        tokenScore: Number(tokenScore.toFixed(2)),
+        combinedScore: Number(combinedScore.toFixed(2)),
+        latestYoutubeUrl: contestant.submissions?.[0]?.youtubeUrl ?? null,
+        latestThumbnailUrl: contestant.submissions?.[0]?.thumbnailUrl ?? null,
+      }),
+    );
   }
 
   async declareWinners(
@@ -217,15 +229,16 @@ export class CompetitionsService {
     ];
 
     if (topThree.length === 0) {
-      throw new BadRequestException('No eligible contestants to declare winners');
+      throw new BadRequestException(
+        'No eligible contestants to declare winners',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
       await tx.competitionWinner.deleteMany({ where: { competitionId } });
 
-      const winners: Awaited<
-        ReturnType<typeof tx.competitionWinner.create>
-      >[] = [];
+      const winners: Awaited<ReturnType<typeof tx.competitionWinner.create>>[] =
+        [];
       for (const [index, entry] of topThree.entries()) {
         winners.push(
           await tx.competitionWinner.create({

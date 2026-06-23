@@ -64,8 +64,21 @@ describe('SubmissionsService', () => {
     },
   );
 
+  it('guides users to register first when no contestant profile exists', async () => {
+    contestantFindUnique.mockResolvedValue(null);
+
+    await expect(
+      service.create('user-1', 'stage-1', { title: 'My entry' }),
+    ).rejects.toThrow(
+      new BadRequestException(
+        'Please register as a contestant for this competition before submitting an entry.',
+      ),
+    );
+    expect(submissionCreate).not.toHaveBeenCalled();
+  });
+
   it.each([ContestantStatus.REJECTED, ContestantStatus.ELIMINATED])(
-    'rejects a %s contestant with the active-contestant message',
+    'rejects a %s contestant with the support message',
     async (status) => {
       contestantFindUnique.mockResolvedValue({
         id: 'contestant-1',
@@ -75,7 +88,9 @@ describe('SubmissionsService', () => {
       await expect(
         service.create('user-1', 'stage-1', { title: 'My entry' }),
       ).rejects.toThrow(
-        new BadRequestException('Only active contestants can submit entries.'),
+        new BadRequestException(
+          'Your account or contestant profile is not allowed to submit entries. Please contact support.',
+        ),
       );
       expect(submissionCreate).not.toHaveBeenCalled();
     },

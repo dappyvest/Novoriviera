@@ -10,6 +10,14 @@ import { CreateSubmissionDto } from './dto/create-submission.dto';
 import { UpdateSubmissionStatusDto } from './dto/update-submission-status.dto';
 import { UpdateSubmissionYoutubeDto } from './dto/update-submission-youtube.dto';
 
+const contestantSubmissionBlockedMessage =
+  'Your account or contestant profile is not allowed to submit entries. Please contact support.';
+
+const blockedContestantStatuses: ContestantStatus[] = [
+  ContestantStatus.REJECTED,
+  ContestantStatus.ELIMINATED,
+];
+
 @Injectable()
 export class SubmissionsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -34,14 +42,14 @@ export class SubmissionsService {
       },
     });
 
-    if (
-      !contestant ||
-      (contestant.status !== ContestantStatus.PENDING &&
-        contestant.status !== ContestantStatus.APPROVED)
-    ) {
+    if (!contestant) {
       throw new BadRequestException(
-        'Only active contestants can submit entries.',
+        'Please register as a contestant for this competition before submitting an entry.',
       );
+    }
+
+    if (blockedContestantStatuses.includes(contestant.status)) {
+      throw new BadRequestException(contestantSubmissionBlockedMessage);
     }
 
     try {
@@ -84,7 +92,10 @@ export class SubmissionsService {
 
   findAll() {
     return this.prisma.submission.findMany({
-      include: { contestant: { include: { user: true, competition: true } }, stage: true },
+      include: {
+        contestant: { include: { user: true, competition: true } },
+        stage: true,
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -122,7 +133,9 @@ export class SubmissionsService {
   }
 
   private async ensureSubmission(id: string) {
-    const submission = await this.prisma.submission.findUnique({ where: { id } });
+    const submission = await this.prisma.submission.findUnique({
+      where: { id },
+    });
 
     if (!submission) {
       throw new NotFoundException('Submission not found');

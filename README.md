@@ -222,7 +222,7 @@ Premium update:
 
 Submit stage entry:
 
-Contestants with `PENDING` or `APPROVED` status can submit immediately. `REJECTED` and `ELIMINATED` contestants cannot submit. Every new submission starts as `PENDING` for admin review.
+Any authenticated user can register as a contestant, upload their contestant photo, and submit a video entry after registration. Contestants can submit immediately unless their contestant profile is explicitly `REJECTED` or `ELIMINATED`, or their user account is deactivated. Every new submission starts as `PENDING` for admin review.
 
 ```http
 POST /api/stages/:stageId/submissions
@@ -268,6 +268,8 @@ GET /api/competitions/:competitionId/leaderboard?mode=votes
 GET /api/competitions/:competitionId/leaderboard?mode=engagement
 GET /api/competitions/:competitionId/leaderboard?mode=combined
 ```
+
+Leaderboard rows include registered entrants unless they are explicitly `REJECTED` or `ELIMINATED`. Each row includes `rank`, `entrantCount`, `photoUrl`, `totalVotes`, and `totalOnlineEngagement`.
 
 ## Phase 4 Coins Wallet And Voting
 
@@ -517,7 +519,7 @@ Content-Type: application/json
 
 {
   "question": "How do I vote?",
-  "answer": "Buy internal coins and vote for approved contestants.",
+  "answer": "Buy internal coins and vote for registered contestants.",
   "sortOrder": 1,
   "isActive": true
 }
@@ -660,7 +662,7 @@ Content-Type: application/json
 }
 ```
 
-Only the contestant profile owner can update the photo. `photoUrl` must be a valid HTTPS URL. Cloudinary secrets remain backend-only.
+Only the contestant profile owner can update the photo. `photoUrl` must be a valid HTTPS URL. No approval status is required for photo upload; `REJECTED` and `ELIMINATED` contestants should contact support. Cloudinary secrets remain backend-only.
 
 Contestant submissions still support manually entered `videoUrl` and `uploadUrl`. If the frontend uploads a video first, submit the returned `secureUrl` as `videoUrl` and/or `uploadUrl`, and optionally include `cloudinaryPublicId`, `cloudinarySecureUrl`, and `uploadedFileMeta`.
 
@@ -670,7 +672,7 @@ Contestant submissions still support manually entered `videoUrl` and `uploadUrl`
 GET /api/contestants/:id
 ```
 
-Returns approved contestant public profile data including `photoUrl`, competition, status, premium state, vote/engagement totals, latest approved submission links, and social-share fields. Leaderboard and admin contestant responses also include `photoUrl`. Private user data and photo upload metadata are not returned publicly.
+Returns registered entrant public profile data, excluding only `REJECTED` and `ELIMINATED` contestants. Public profiles include `photoUrl`, competition, status, premium state, vote/engagement totals, rank/counter fields where available, latest approved submission links, and social-share fields. Leaderboard rows include `rank`, `entrantCount`, `photoUrl`, `totalVotes`, and `totalOnlineEngagement`. Admin contestant responses also include photo upload metadata. Private user data and photo upload metadata are not returned publicly.
 
 ### Multi-Platform Submission Links
 
