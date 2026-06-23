@@ -22,7 +22,7 @@ const publicContestantBlockedStatuses = [
   ContestantStatus.ELIMINATED,
 ];
 
-const publicSubmissionBlockedStatuses = [SubmissionStatus.REJECTED];
+const publicSubmissionVisibleStatuses = [SubmissionStatus.APPROVED];
 
 @Injectable()
 export class CompetitionsService {
@@ -113,8 +113,8 @@ export class CompetitionsService {
       },
       include: {
         submissions: {
-          where: { status: { notIn: publicSubmissionBlockedStatuses } },
-          orderBy: { updatedAt: 'desc' },
+          where: { status: { in: publicSubmissionVisibleStatuses } },
+          orderBy: { createdAt: 'desc' },
           take: 1,
         },
       },
@@ -189,6 +189,14 @@ export class CompetitionsService {
           engagementScore: Number(engagementScore.toFixed(2)),
           tokenScore: Number(tokenScore.toFixed(2)),
           combinedScore: Number(combinedScore.toFixed(2)),
+          videoUrl: latestSubmission?.videoUrl ?? null,
+          uploadUrl: latestSubmission?.uploadUrl ?? null,
+          cloudinarySecureUrl: latestSubmission?.cloudinarySecureUrl ?? null,
+          externalVideoUrl: latestSubmission?.externalVideoUrl ?? null,
+          youtubeUrl: latestSubmission?.youtubeUrl ?? null,
+          tiktokUrl: latestSubmission?.tiktokUrl ?? null,
+          facebookUrl: latestSubmission?.facebookUrl ?? null,
+          thumbnailUrl: latestSubmission?.thumbnailUrl ?? null,
           latestVideoUrl: latestSubmission?.videoUrl ?? null,
           latestUploadUrl: latestSubmission?.uploadUrl ?? null,
           latestCloudinarySecureUrl:

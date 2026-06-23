@@ -389,7 +389,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         competitions.push(competition);
         return Promise.resolve(competition);
       }),
-      findMany: jest.fn(({ where } = {}) => {
+      findMany: jest.fn(({ where, include } = {}) => {
         const result = where?.status?.in
           ? competitions.filter((item) => where.status.in.includes(item.status))
           : competitions;
@@ -486,7 +486,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
           ) ?? null,
         );
       }),
-      findMany: jest.fn(({ where } = {}) => {
+      findMany: jest.fn(({ where, include } = {}) => {
         let result = [...contestants];
         if (where?.userId)
           result = result.filter((item) => item.userId === where.userId);
@@ -505,20 +505,54 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
           }
         }
         return Promise.resolve(
-          result.map((contestant) => ({
-            ...contestant,
-            user: users.find((item) => item.id === contestant.userId),
-            competition: competitions.find(
-              (item) => item.id === contestant.competitionId,
-            ),
-            submissions: submissions
-              .filter(
+          result.map((contestant) => {
+            let contestantSubmissions = submissions.filter(
+              (submission) => submission.contestantId === contestant.id,
+            );
+
+            if (include?.submissions?.where?.status?.in) {
+              contestantSubmissions = contestantSubmissions.filter(
                 (submission) =>
-                  submission.contestantId === contestant.id &&
+                  include.submissions.where.status.in.includes(
+                    submission.status,
+                  ),
+              );
+            } else if (include?.submissions?.where?.status?.notIn) {
+              contestantSubmissions = contestantSubmissions.filter(
+                (submission) =>
+                  !include.submissions.where.status.notIn.includes(
+                    submission.status,
+                  ),
+              );
+            } else {
+              contestantSubmissions = contestantSubmissions.filter(
+                (submission) =>
                   submission.status === SubmissionStatus.APPROVED,
-              )
-              .slice(0, 1),
-          })),
+              );
+            }
+
+            if (include?.submissions?.orderBy?.createdAt === 'desc') {
+              contestantSubmissions.sort(
+                (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+              );
+            } else if (include?.submissions?.orderBy?.updatedAt === 'desc') {
+              contestantSubmissions.sort(
+                (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime(),
+              );
+            }
+
+            return {
+              ...contestant,
+              user: users.find((item) => item.id === contestant.userId),
+              competition: competitions.find(
+                (item) => item.id === contestant.competitionId,
+              ),
+              submissions: contestantSubmissions.slice(
+                0,
+                include?.submissions?.take ?? 1,
+              ),
+            };
+          }),
         );
       }),
       findFirst: jest.fn(({ where }) => {
@@ -1402,6 +1436,11 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       displayName: 'Jane Star',
       status: ContestantStatus.APPROVED,
       totalVotes: 1,
+      videoUrl: 'https://example.com/video.mp4',
+      latestVideoUrl: 'https://example.com/video.mp4',
+      latestSubmission: expect.objectContaining({
+        videoUrl: 'https://example.com/video.mp4',
+      }),
     });
   });
 
@@ -1855,6 +1894,24 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       tokenScore: 50,
       combinedScore: 100,
       rank: 1,
+      videoUrl: uploadResponse.body.secureUrl,
+      uploadUrl: uploadResponse.body.secureUrl,
+      cloudinarySecureUrl: uploadResponse.body.secureUrl,
+      externalVideoUrl: 'https://example.com/video',
+      tiktokUrl: 'https://www.tiktok.com/@novo/video/123',
+      facebookUrl: 'https://facebook.com/reel/123',
+      youtubeUrl: 'https://youtube.com/watch?v=abc123',
+      thumbnailUrl: 'https://example.com/thumb.jpg',
+      latestSubmission: expect.objectContaining({
+        videoUrl: uploadResponse.body.secureUrl,
+        uploadUrl: uploadResponse.body.secureUrl,
+        cloudinarySecureUrl: uploadResponse.body.secureUrl,
+        externalVideoUrl: 'https://example.com/video',
+        tiktokUrl: 'https://www.tiktok.com/@novo/video/123',
+        facebookUrl: 'https://facebook.com/reel/123',
+        youtubeUrl: 'https://youtube.com/watch?v=abc123',
+        thumbnailUrl: 'https://example.com/thumb.jpg',
+      }),
     });
 
     const winnersResponse = await request(app.getHttpServer())

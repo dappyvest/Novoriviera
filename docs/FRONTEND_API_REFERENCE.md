@@ -193,6 +193,22 @@ export interface Submission {
   stage?: Stage;
 }
 
+export interface LeaderboardSubmission {
+  id: string;
+  title: string;
+  description: string | null;
+  videoUrl: string | null;
+  uploadUrl: string | null;
+  cloudinarySecureUrl: string | null;
+  externalVideoUrl: string | null;
+  tiktokUrl: string | null;
+  facebookUrl: string | null;
+  youtubeUrl: string | null;
+  thumbnailUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface LeaderboardEntry {
   rank: number;
   contestantId: string;
@@ -204,8 +220,23 @@ export interface LeaderboardEntry {
   engagementScore: number;
   tokenScore: number;
   combinedScore: number;
+  videoUrl: string | null;
+  uploadUrl: string | null;
+  cloudinarySecureUrl: string | null;
+  externalVideoUrl: string | null;
+  youtubeUrl: string | null;
+  tiktokUrl: string | null;
+  facebookUrl: string | null;
+  thumbnailUrl: string | null;
+  latestVideoUrl: string | null;
+  latestUploadUrl: string | null;
+  latestCloudinarySecureUrl: string | null;
+  latestExternalVideoUrl: string | null;
+  latestTiktokUrl: string | null;
+  latestFacebookUrl: string | null;
   latestYoutubeUrl: string | null;
   latestThumbnailUrl: string | null;
+  latestSubmission: LeaderboardSubmission | null;
 }
 
 export interface CoinPackage {
@@ -1016,6 +1047,14 @@ Success:
     "engagementScore": 50,
     "tokenScore": 50,
     "combinedScore": 100,
+    "videoUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "uploadUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "cloudinarySecureUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "externalVideoUrl": "https://example.com/video",
+    "tiktokUrl": "https://www.tiktok.com/@novo/video/123",
+    "facebookUrl": "https://facebook.com/reel/123",
+    "youtubeUrl": "https://youtube.com/watch?v=abc123",
+    "thumbnailUrl": "https://img.youtube.com/vi/abc123/hqdefault.jpg",
     "latestVideoUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
     "latestUploadUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
     "latestCloudinarySecureUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
@@ -1040,7 +1079,7 @@ Success:
 ]
 ```
 
-Registered entrants are included unless their contestant profile is `REJECTED` or `ELIMINATED`. Leaderboard rows include `photoUrl`, `totalVotes`, `totalOnlineEngagement`, `rank`, `entrantCount`, and latest visible submission video fields when available.
+Registered entrants are included unless their contestant profile is `REJECTED` or `ELIMINATED`. Leaderboard rows include `photoUrl`, `totalVotes`, `totalOnlineEngagement`, `rank`, `entrantCount`, direct video fields from the latest approved visible submission, compatibility `latest*` video aliases, and `latestSubmission` when available. Rejected or deleted submissions are not returned.
 
 Common errors: `404` competition not found.
 
