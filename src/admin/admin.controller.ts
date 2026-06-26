@@ -11,6 +11,9 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import { AdsService } from '../ads/ads.service';
+import { CreateSponsoredAdDto } from '../ads/dto/create-sponsored-ad.dto';
+import { UpdateSponsoredAdDto } from '../ads/dto/update-sponsored-ad.dto';
 import { CoinPackagesService } from '../coin-packages/coin-packages.service';
 import { CreateCoinPackageDto } from '../coin-packages/dto/create-coin-package.dto';
 import { UpdateCoinPackageDto } from '../coin-packages/dto/update-coin-package.dto';
@@ -40,6 +43,7 @@ import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 export class AdminController {
   constructor(
     private readonly adminService: AdminService,
+    private readonly adsService: AdsService,
     private readonly coinPackagesService: CoinPackagesService,
     private readonly contestantsService: ContestantsService,
     private readonly paymentsService: PaymentsService,
@@ -47,6 +51,64 @@ export class AdminController {
     private readonly votesService: VotesService,
     private readonly walletService: WalletService,
   ) {}
+
+  @Post('ads')
+  async createAd(
+    @Body() dto: CreateSponsoredAdDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    const ad = await this.adsService.create(dto);
+    await this.adminService.createAuditLog({
+      actorId: user.id,
+      action: 'SPONSORED_AD_CREATE',
+      entity: 'SponsoredAd',
+      entityId: ad.id,
+      metadata: { ...dto },
+    });
+    return ad;
+  }
+
+  @Get('ads')
+  findAds() {
+    return this.adsService.findAdmin();
+  }
+
+  @Get('ads/:id')
+  findAd(@Param('id') id: string) {
+    return this.adsService.findOne(id);
+  }
+
+  @Patch('ads/:id')
+  async updateAd(
+    @Param('id') id: string,
+    @Body() dto: UpdateSponsoredAdDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    const ad = await this.adsService.update(id, dto);
+    await this.adminService.createAuditLog({
+      actorId: user.id,
+      action: 'SPONSORED_AD_UPDATE',
+      entity: 'SponsoredAd',
+      entityId: id,
+      metadata: { ...dto },
+    });
+    return ad;
+  }
+
+  @Delete('ads/:id')
+  async deleteAd(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    const ad = await this.adsService.remove(id);
+    await this.adminService.createAuditLog({
+      actorId: user.id,
+      action: 'SPONSORED_AD_DELETE',
+      entity: 'SponsoredAd',
+      entityId: id,
+    });
+    return ad;
+  }
 
   @Post('coin-packages')
   async createCoinPackage(

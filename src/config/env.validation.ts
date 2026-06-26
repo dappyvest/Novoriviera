@@ -79,7 +79,7 @@ class EnvironmentVariables {
   @Min(1)
   @IsOptional()
   @Type(() => Number)
-  MAX_VIDEO_UPLOAD_SIZE_MB?: number;
+  MAX_VIDEO_UPLOAD_SIZE_MB = 50;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

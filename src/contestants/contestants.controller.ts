@@ -59,6 +59,16 @@ export class ContestantsController {
     );
   }
 
+  @Get('code/:contestantCode/vote-info')
+  getVoteInfo(@Param('contestantCode') contestantCode: string) {
+    return this.contestantsService.getVoteInfo(contestantCode);
+  }
+
+  @Get('code/:contestantCode')
+  findPublicProfileByCode(@Param('contestantCode') contestantCode: string) {
+    return this.contestantsService.findPublicProfileByCode(contestantCode);
+  }
+
   @Get(':id')
   findPublicProfile(@Param('id') id: string) {
     return this.contestantsService.findPublicProfile(id);

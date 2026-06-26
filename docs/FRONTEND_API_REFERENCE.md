@@ -58,6 +58,9 @@ type ContactMessageStatus = "NEW" | "READ" | "RESOLVED";
 type EngagementPlatform = "TIKTOK" | "FACEBOOK" | "YOUTUBE" | "INSTAGRAM" | "OTHER";
 type WinnerPlacement = "FIRST" | "SECOND" | "THIRD";
 type LeaderboardMode = "votes" | "engagement" | "combined";
+type SponsoredAdPlacement = "HOME_TOP" | "HOME_MIDDLE" | "LEADERBOARD" | "COMPETITION_PAGE" | "CONTESTANT_PAGE";
+type SponsoredAdStatus = "DRAFT" | "ACTIVE" | "PAUSED" | "EXPIRED";
+type ManualVotePaymentStatus = "PENDING" | "APPROVED" | "REJECTED";
 ```
 
 ### Error Response Format
@@ -124,6 +127,12 @@ export interface Competition {
   prizeSecond: string | null;
   prizeThird: string | null;
   rules: string | null;
+  manualVotingEnabled: boolean;
+  votePriceNaira?: number;
+  paymentBankName?: string | null;
+  paymentAccountName?: string | null;
+  paymentAccountNumber?: string | null;
+  paymentInstructions?: string | null;
   ownerId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -148,12 +157,14 @@ export interface Stage {
 
 export interface Contestant {
   id: string;
+  contestantCode: string;
   displayName: string;
   bio: string | null;
   age: number | null;
   location: string | null;
   guardianName: string | null;
   guardianPhone: string | null;
+  photoUrl: string | null;
   status: ContestantStatus;
   isPremium: boolean;
   premiumExpiresAt: string | null;
@@ -350,6 +361,54 @@ export interface Sponsor {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SponsoredAd {
+  id: string;
+  title: string;
+  productName: string;
+  description: string;
+  imageUrl: string | null;
+  videoUrl: string | null;
+  videoPublicId: string | null;
+  targetUrl: string | null;
+  whatsappUrl: string | null;
+  socialUrl: string | null;
+  placement: SponsoredAdPlacement;
+  status: SponsoredAdStatus;
+  startsAt: string | null;
+  endsAt: string | null;
+  sortOrder: number;
+  clicks: number;
+  impressions: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ManualVotePayment {
+  id: string;
+  contestantId: string;
+  competitionId: string;
+  contestantCode: string;
+  voterName: string;
+  voterPhone: string;
+  voterEmail: string | null;
+  amountPaid: number;
+  votePriceNaira: number;
+  votesCalculated: number;
+  transferReference: string | null;
+  paymentNarration: string | null;
+  proofImageUrl: string | null;
+  note: string | null;
+  status: ManualVotePaymentStatus;
+  adminNote: string | null;
+  verifiedAt: string | null;
+  verifiedById: string | null;
+  createdAt: string;
+  updatedAt: string;
+  contestant?: Contestant;
+  competition?: Competition;
+  verifiedBy?: User;
 }
 
 export interface CompetitionRules {
@@ -666,7 +725,7 @@ Request:
 - Field name: `file`
 - Video route accepts MP4, MOV, WebM, AVI, MKV, and 3GP.
 - Image route accepts `image/*` only.
-- Max video upload size is configured by `MAX_VIDEO_UPLOAD_SIZE_MB`, default `100` MB and falling back to `MAX_UPLOAD_SIZE_MB`.
+- Max video upload size is configured by `MAX_VIDEO_UPLOAD_SIZE_MB`, default `50` MB.
 
 Success:
 
@@ -684,6 +743,181 @@ Success:
 Use the image response `secureUrl` and `publicId` with the contestant photo update endpoint. Cloudinary API credentials and signatures are never returned.
 
 Common errors: `400` missing file or unsupported format, `401`, `413` file too large, `502` Cloudinary upload failure, `503` Cloudinary not configured. All application errors are JSON responses.
+
+### Manual Public Voting
+
+Manual transfer voting is the primary public voter flow. Voters do not register or log in. Contestants share their public profile link or contestant code, voters transfer to the configured bank account with the contestant code in the narration, then submit payment proof for admin review. The old wallet/coin endpoints still exist for future use.
+
+| Method | Path | Auth | Roles |
+| --- | --- | --- | --- |
+| `GET` | `/api/contestants/code/:contestantCode` | Public | None |
+| `GET` | `/api/contestants/code/:contestantCode/vote-info` | Public | None |
+| `POST` | `/api/public-votes` | Public | None |
+| `GET` | `/api/admin/public-votes` | Required | `ADMIN`, `SUPER_ADMIN` |
+| `GET` | `/api/admin/public-votes/:id` | Required | `ADMIN`, `SUPER_ADMIN` |
+| `PATCH` | `/api/admin/public-votes/:id/status` | Required | `ADMIN`, `SUPER_ADMIN` |
+
+Contestant codes are generated automatically on contestant registration and look like `NRV-100001`. `contestantCode` is returned in contestant profiles, leaderboard rows, admin contestant responses, and contestant dashboard responses.
+
+`GET /api/contestants/code/:contestantCode/vote-info`
+
+Success:
+
+```json
+{
+  "contestant": {
+    "id": "contestant-id",
+    "contestantCode": "NRV-100001",
+    "displayName": "Ada Star",
+    "photoUrl": "https://example.com/photo.jpg",
+    "status": "APPROVED"
+  },
+  "competition": {
+    "id": "competition-id",
+    "title": "Novo Talent 2026",
+    "slug": "novo-talent-2026",
+    "bannerUrl": "https://example.com/banner.jpg"
+  },
+  "votePriceNaira": 500,
+  "bankName": "Novo Bank",
+  "accountName": "NovoRivera Votes",
+  "accountNumber": "1234567890",
+  "paymentInstructions": "Transfer and include contestant code.",
+  "requiredNarration": "NRV-100001",
+  "contestantCode": "NRV-100001"
+}
+```
+
+`POST /api/public-votes`
+
+```json
+{
+  "contestantCode": "NRV-100001",
+  "competitionId": "competition-id",
+  "voterName": "John Doe",
+  "voterPhone": "08000000000",
+  "voterEmail": "john@example.com",
+  "amountPaid": 1000,
+  "transferReference": "BANK-REF-1",
+  "paymentNarration": "NRV-100001",
+  "proofImageUrl": "https://example.com/proof.jpg",
+  "note": "Optional note"
+}
+```
+
+Rules:
+
+- `contestantCode` must exist.
+- Contestant must belong to `competitionId`.
+- Contestant must not be `REJECTED` or `ELIMINATED`.
+- Competition `manualVotingEnabled` must be `true`.
+- `amountPaid` must be at least `votePriceNaira`.
+- `votesCalculated = floor(amountPaid / votePriceNaira)`.
+- Initial status is `PENDING`; votes are not added until admin approval.
+
+Admin list filters:
+
+- `status`: `PENDING`, `APPROVED`, or `REJECTED`.
+- `competitionId`.
+- `contestantCode`.
+
+Status update body:
+
+```json
+{
+  "status": "APPROVED",
+  "adminNote": "Payment confirmed"
+}
+```
+
+Approving increments `Contestant.totalVotes` by `votesCalculated` once. Re-approving an already approved payment does not double-count. Rejecting a pending payment does not increment votes. Rejecting a previously approved payment subtracts the approved votes safely. Status updates are audited with `PUBLIC_VOTE_STATUS_UPDATE`.
+
+Admin competition create/update accepts manual voting fields:
+
+```json
+{
+  "manualVotingEnabled": true,
+  "votePriceNaira": 500,
+  "paymentBankName": "Novo Bank",
+  "paymentAccountName": "NovoRivera Votes",
+  "paymentAccountNumber": "1234567890",
+  "paymentInstructions": "Transfer and include contestant code."
+}
+```
+
+Public competition detail exposes bank/payment fields only when `manualVotingEnabled` is `true`.
+
+### Sponsored Ads
+
+Public ad reads only return `ACTIVE` ads whose date window is currently valid. Ads are ordered by `sortOrder` ascending, then newest first. The frontend should render ads in non-blocking slots and should never place an ad modal or forced interstitial inside voting or submission flows.
+
+| Method | Path | Auth | Roles |
+| --- | --- | --- | --- |
+| `GET` | `/api/ads?placement=HOME_TOP` | Public | None |
+| `POST` | `/api/ads/:id/click` | Public | None |
+| `POST` | `/api/ads/:id/impression` | Public | None |
+| `POST` | `/api/admin/ads` | Required | `ADMIN`, `SUPER_ADMIN` |
+| `GET` | `/api/admin/ads` | Required | `ADMIN`, `SUPER_ADMIN` |
+| `GET` | `/api/admin/ads/:id` | Required | `ADMIN`, `SUPER_ADMIN` |
+| `PATCH` | `/api/admin/ads/:id` | Required | `ADMIN`, `SUPER_ADMIN` |
+| `DELETE` | `/api/admin/ads/:id` | Required | `ADMIN`, `SUPER_ADMIN` |
+
+Create body:
+
+```json
+{
+  "title": "Leaderboard sponsor",
+  "productName": "Novo Boost",
+  "description": "Promoted product for contestants",
+  "imageUrl": "https://res.cloudinary.com/cloud/image/upload/novorivera/ad.jpg",
+  "videoUrl": "https://res.cloudinary.com/cloud/video/upload/novorivera/ad.mp4",
+  "videoPublicId": "novorivera/ad",
+  "targetUrl": "https://example.com/product",
+  "whatsappUrl": "https://wa.me/2348000000000",
+  "socialUrl": "https://instagram.com/novoriviera",
+  "placement": "LEADERBOARD",
+  "status": "ACTIVE",
+  "startsAt": "2026-07-01T00:00:00.000Z",
+  "endsAt": "2026-08-01T00:00:00.000Z",
+  "sortOrder": 1
+}
+```
+
+`PATCH /api/admin/ads/:id` accepts any subset of the create fields. Nullable media/link/window fields can be sent as `null` to clear them.
+
+Public response:
+
+```json
+[
+  {
+    "id": "ad-id",
+    "title": "Leaderboard sponsor",
+    "productName": "Novo Boost",
+    "description": "Promoted product for contestants",
+    "imageUrl": "https://res.cloudinary.com/cloud/image/upload/novorivera/ad.jpg",
+    "videoUrl": "https://res.cloudinary.com/cloud/video/upload/novorivera/ad.mp4",
+    "videoPublicId": "novorivera/ad",
+    "targetUrl": "https://example.com/product",
+    "whatsappUrl": "https://wa.me/2348000000000",
+    "socialUrl": "https://instagram.com/novoriviera",
+    "placement": "LEADERBOARD",
+    "status": "ACTIVE",
+    "startsAt": "2026-07-01T00:00:00.000Z",
+    "endsAt": "2026-08-01T00:00:00.000Z",
+    "sortOrder": 1,
+    "clicks": 0,
+    "impressions": 0,
+    "createdAt": "2026-06-26T00:00:00.000Z",
+    "updatedAt": "2026-06-26T00:00:00.000Z"
+  }
+]
+```
+
+For navigation, prefer the first configured destination in this order: `targetUrl`, `whatsappUrl`, `socialUrl`. Call the click endpoint before or while opening the selected destination. Call the impression endpoint when an ad slot becomes visible enough to count as viewed.
+
+Admins upload ad images with `/api/uploads/image` and ad videos with `/api/uploads/video`, then save `secureUrl` as `imageUrl` or `videoUrl` and `publicId` as `videoPublicId` where relevant. Ad video uploads use the existing video upload endpoint and the 50 MB default max.
+
+Admin create/update/delete writes `AdminAuditLog` entries with actions `SPONSORED_AD_CREATE`, `SPONSORED_AD_UPDATE`, and `SPONSORED_AD_DELETE`.
 
 ### Competitions
 
@@ -1880,6 +2114,9 @@ User-auth routes:
 - `PATCH /api/contestants/me/:competitionId/photo`
 - `GET /api/contestants/me/submissions`
 - `GET /api/contestants/:id/votes`
+- `GET /api/contestants/code/:contestantCode`
+- `GET /api/contestants/code/:contestantCode/vote-info`
+- `POST /api/public-votes`
 - `POST /api/stages/:stageId/submissions`
 - `GET /api/wallet/me`
 - `GET /api/wallet/me/transactions`
@@ -1891,6 +2128,14 @@ User-auth routes:
 Admin-auth routes:
 
 - All `/api/admin/*` routes.
+- `POST /api/admin/ads`
+- `GET /api/admin/ads`
+- `GET /api/admin/ads/:id`
+- `PATCH /api/admin/ads/:id`
+- `DELETE /api/admin/ads/:id`
+- `GET /api/admin/public-votes`
+- `GET /api/admin/public-votes/:id`
+- `PATCH /api/admin/public-votes/:id/status`
 - `POST /api/admin/coin-packages`
 - `GET /api/admin/coin-packages`
 - `PATCH /api/admin/coin-packages/:id`
@@ -1925,7 +2170,17 @@ Admin-auth routes:
 6. Refresh wallet with `/api/wallet/me`.
 7. Show payment history from `/api/payments/me`.
 
-### Voting Flow
+### Manual Public Voting Flow
+
+1. Contestant registers/logs in and shares `/contestants/[id]` or a code-based frontend route.
+2. Public profile shows `contestantCode` and a Vote Now action.
+3. Vote Now loads `/api/contestants/code/:contestantCode/vote-info`.
+4. Voter transfers to the returned bank account and uses `requiredNarration` as the transfer narration.
+5. Voter submits details and optional proof image URL to `/api/public-votes`.
+6. Admin reviews `/api/admin/public-votes` and approves or rejects with `/api/admin/public-votes/:id/status`.
+7. Approved manual vote payments update `totalVotes`; pending/rejected payments do not count.
+
+### Legacy Coin Voting Flow
 
 1. Load competition detail with `/api/competitions/:id`.
 2. Load leaderboard with `/api/competitions/:competitionId/leaderboard`.
@@ -1934,6 +2189,15 @@ Admin-auth routes:
 5. Send `contestantId`, `stageId`, and integer `coinsToSpend`.
 6. On success, update displayed wallet balance from response and refresh leaderboard/stats.
 7. For weighted winner views, use leaderboard `mode=combined&engagementWeight=50&tokenWeight=50`.
+
+### Sponsored Ads Flow
+
+1. Admin uploads optional creative assets with `/api/uploads/image` or `/api/uploads/video`.
+2. Admin creates an ad through `/api/admin/ads` with placement, destination URL fields, status, and optional date window.
+3. Frontend loads ads by page slot with `/api/ads?placement=HOME_TOP`, `/api/ads?placement=LEADERBOARD`, and similar placement values.
+4. Frontend renders ads in existing page space only; voting and submission actions must remain uninterrupted.
+5. When an ad is visible, call `/api/ads/:id/impression`.
+6. When a user clicks, call `/api/ads/:id/click` and open `targetUrl`, `whatsappUrl`, or `socialUrl`.
 
 ### Contestant Registration And Submission Flow
 
@@ -1956,6 +2220,7 @@ Admin-auth routes:
 - `/competitions` -> competition listing from `/api/competitions`.
 - `/competitions/[id-or-slug]` -> competition detail. Backend supports id only; if using slug in URL, frontend must first resolve from `/api/competitions`.
 - `/contestants/[id]` -> public contestant profile from `/api/contestants/:id`.
+- `/vote/[contestantCode]` -> `/api/contestants/code/:contestantCode/vote-info` and `/api/public-votes`.
 - `/leaderboard/[competitionId]` -> `/api/competitions/:competitionId/leaderboard`.
 - `/login` -> `/api/auth/login`.
 - `/register` -> `/api/auth/register`.
@@ -1967,7 +2232,9 @@ Admin-auth routes:
 - `/admin/contestants` -> `/api/admin/contestants`.
 - `/admin/submissions` -> `/api/admin/submissions`.
 - `/admin/payments` -> `/api/admin/payments`.
+- `/admin/public-votes` -> `/api/admin/public-votes`.
 - `/admin/cms` -> `/api/admin/site-settings`, `/api/admin/homepage`, `/api/admin/faqs`, `/api/admin/sponsors`, `/api/admin/rules`, `/api/admin/contact-messages`.
+- `/admin/ads` -> `/api/admin/ads`.
 
 ## Warnings
 

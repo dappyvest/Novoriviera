@@ -9,8 +9,11 @@ import {
   CoinTransactionType,
   ContactMessageStatus,
   ContestantStatus,
+  ManualVotePaymentStatus,
   PaymentProvider,
   PaymentStatus,
+  SponsoredAdPlacement,
+  SponsoredAdStatus,
   StageStatus,
   SubmissionStatus,
   UserRole,
@@ -64,6 +67,12 @@ type MockCompetition = {
   prizeFirst: string | null;
   prizeSecond: string | null;
   prizeThird: string | null;
+  manualVotingEnabled: boolean;
+  votePriceNaira: number;
+  paymentBankName: string | null;
+  paymentAccountName: string | null;
+  paymentAccountNumber: string | null;
+  paymentInstructions: string | null;
   ownerId?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -86,6 +95,7 @@ type MockStage = {
 
 type MockContestant = {
   id: string;
+  contestantCode: string;
   userId: string;
   competitionId: string;
   displayName: string;
@@ -236,6 +246,28 @@ type MockSponsor = {
   updatedAt: Date;
 };
 
+type MockSponsoredAd = {
+  id: string;
+  title: string;
+  productName: string;
+  description: string;
+  imageUrl: string | null;
+  videoUrl: string | null;
+  videoPublicId: string | null;
+  targetUrl: string | null;
+  whatsappUrl: string | null;
+  socialUrl: string | null;
+  placement: SponsoredAdPlacement;
+  status: SponsoredAdStatus;
+  startsAt: Date | null;
+  endsAt: Date | null;
+  sortOrder: number;
+  clicks: number;
+  impressions: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 type MockCompetitionRules = {
   id: string;
   singletonKey: string;
@@ -297,6 +329,29 @@ type MockAdminAuditLog = {
   createdAt: Date;
 };
 
+type MockManualVotePayment = {
+  id: string;
+  contestantId: string;
+  competitionId: string;
+  contestantCode: string;
+  voterName: string;
+  voterPhone: string;
+  voterEmail: string | null;
+  amountPaid: number;
+  votePriceNaira: number;
+  votesCalculated: number;
+  transferReference: string | null;
+  paymentNarration: string | null;
+  proofImageUrl: string | null;
+  note: string | null;
+  status: ManualVotePaymentStatus;
+  adminNote: string | null;
+  verifiedAt: Date | null;
+  verifiedById: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
   let app: INestApplication<App>;
   const users: MockUser[] = [];
@@ -313,6 +368,8 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
   const homepageContent: MockHomepageContent[] = [];
   const faqs: MockFaq[] = [];
   const sponsors: MockSponsor[] = [];
+  const sponsoredAds: MockSponsoredAd[] = [];
+  const manualVotePayments: MockManualVotePayment[] = [];
   const competitionRules: MockCompetitionRules[] = [];
   const contactMessages: MockContactMessage[] = [];
   const engagementBreakdowns: MockEngagementBreakdown[] = [];
@@ -320,6 +377,19 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
   const adminAuditLogs: MockAdminAuditLog[] = [];
   const cloudinaryUploadStreamMock = cloudinary.uploader
     .upload_stream as jest.Mock;
+
+  const withManualVoteRelations = (payment: MockManualVotePayment | null) => {
+    if (!payment) return null;
+
+    return {
+      ...payment,
+      contestant: contestants.find((item) => item.id === payment.contestantId),
+      competition: competitions.find(
+        (item) => item.id === payment.competitionId,
+      ),
+      verifiedBy: users.find((item) => item.id === payment.verifiedById),
+    };
+  };
 
   const prismaMock = {
     $transaction: jest.fn((callback: (tx: any) => unknown) =>
@@ -382,6 +452,12 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
           prizeFirst: data.prizeFirst ?? null,
           prizeSecond: data.prizeSecond ?? null,
           prizeThird: data.prizeThird ?? null,
+          manualVotingEnabled: data.manualVotingEnabled ?? true,
+          votePriceNaira: data.votePriceNaira ?? 500,
+          paymentBankName: data.paymentBankName ?? null,
+          paymentAccountName: data.paymentAccountName ?? null,
+          paymentAccountNumber: data.paymentAccountNumber ?? null,
+          paymentInstructions: data.paymentInstructions ?? null,
           ownerId: data.ownerId,
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -472,18 +548,45 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       }),
     },
     contestant: {
-      findUnique: jest.fn(({ where }) => {
+      findUnique: jest.fn(({ where, include }) => {
+        const withIncludes = (contestant: MockContestant | null) => {
+          if (!contestant) return null;
+          return {
+            ...contestant,
+            ...(include?.competition
+              ? {
+                  competition: competitions.find(
+                    (item) => item.id === contestant.competitionId,
+                  ),
+                }
+              : {}),
+          };
+        };
         if (where.id) {
           return Promise.resolve(
-            contestants.find((item) => item.id === where.id) ?? null,
+            withIncludes(
+              contestants.find((item) => item.id === where.id) ?? null,
+            ),
+          );
+        }
+        if (where.contestantCode) {
+          return Promise.resolve(
+            withIncludes(
+              contestants.find(
+                (item) => item.contestantCode === where.contestantCode,
+              ) ?? null,
+            ) ?? null,
           );
         }
         return Promise.resolve(
-          contestants.find(
-            (item) =>
-              item.competitionId === where.competitionId_userId.competitionId &&
-              item.userId === where.competitionId_userId.userId,
-          ) ?? null,
+          withIncludes(
+            contestants.find(
+              (item) =>
+                item.competitionId ===
+                  where.competitionId_userId.competitionId &&
+                item.userId === where.competitionId_userId.userId,
+            ) ?? null,
+          ),
         );
       }),
       findMany: jest.fn(({ where, include } = {}) => {
@@ -558,6 +661,11 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       findFirst: jest.fn(({ where }) => {
         const contestant = contestants.find((item) => {
           if (where.id && item.id !== where.id) return false;
+          if (
+            where.contestantCode &&
+            item.contestantCode !== where.contestantCode
+          )
+            return false;
           if (where.status?.notIn && where.status.notIn.includes(item.status))
             return false;
           if (
@@ -586,6 +694,8 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       create: jest.fn(({ data }) => {
         const contestant: MockContestant = {
           id: `contestant-${contestants.length + 1}`,
+          contestantCode:
+            data.contestantCode ?? `NRV-${100001 + contestants.length}`,
           userId: data.userId,
           competitionId: data.competitionId,
           displayName: data.displayName,
@@ -609,6 +719,10 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         if (!contestant) throw new Error('not found');
         if (data.totalVotes?.increment) {
           contestant.totalVotes += data.totalVotes.increment;
+          delete data.totalVotes;
+        }
+        if (data.totalVotes?.decrement) {
+          contestant.totalVotes -= data.totalVotes.decrement;
           delete data.totalVotes;
         }
         if (data.totalOnlineEngagement?.increment) {
@@ -794,6 +908,70 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
             ),
           })),
         );
+      }),
+    },
+    manualVotePayment: {
+      create: jest.fn(({ data }) => {
+        const payment: MockManualVotePayment = {
+          id: `manual-vote-${manualVotePayments.length + 1}`,
+          contestantId: data.contestantId,
+          competitionId: data.competitionId,
+          contestantCode: data.contestantCode,
+          voterName: data.voterName,
+          voterPhone: data.voterPhone,
+          voterEmail: data.voterEmail ?? null,
+          amountPaid: data.amountPaid,
+          votePriceNaira: data.votePriceNaira,
+          votesCalculated: data.votesCalculated,
+          transferReference: data.transferReference ?? null,
+          paymentNarration: data.paymentNarration ?? null,
+          proofImageUrl: data.proofImageUrl ?? null,
+          note: data.note ?? null,
+          status: data.status ?? ManualVotePaymentStatus.PENDING,
+          adminNote: data.adminNote ?? null,
+          verifiedAt: data.verifiedAt ?? null,
+          verifiedById: data.verifiedById ?? null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        manualVotePayments.push(payment);
+        return Promise.resolve(withManualVoteRelations(payment));
+      }),
+      findMany: jest.fn(({ where } = {}) => {
+        let result = [...manualVotePayments];
+        if (where?.status) {
+          result = result.filter((item) => item.status === where.status);
+        }
+        if (where?.competitionId) {
+          result = result.filter(
+            (item) => item.competitionId === where.competitionId,
+          );
+        }
+        if (where?.contestantCode) {
+          result = result.filter(
+            (item) => item.contestantCode === where.contestantCode,
+          );
+        }
+        return Promise.resolve(
+          result
+            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+            .map((payment) => withManualVoteRelations(payment)),
+        );
+      }),
+      findUnique: jest.fn(({ where }) =>
+        Promise.resolve(
+          withManualVoteRelations(
+            manualVotePayments.find((item) => item.id === where.id) ?? null,
+          ),
+        ),
+      ),
+      update: jest.fn(({ where, data }) => {
+        const payment = manualVotePayments.find(
+          (item) => item.id === where.id,
+        );
+        if (!payment) throw new Error('not found');
+        Object.assign(payment, data, { updatedAt: new Date() });
+        return Promise.resolve(withManualVoteRelations(payment));
       }),
     },
     coinPackage: {
@@ -1193,6 +1371,81 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         return Promise.resolve(sponsor);
       }),
     },
+    sponsoredAd: {
+      create: jest.fn(({ data }) => {
+        const ad: MockSponsoredAd = {
+          id: `ad-${sponsoredAds.length + 1}`,
+          title: data.title,
+          productName: data.productName,
+          description: data.description,
+          imageUrl: data.imageUrl ?? null,
+          videoUrl: data.videoUrl ?? null,
+          videoPublicId: data.videoPublicId ?? null,
+          targetUrl: data.targetUrl ?? null,
+          whatsappUrl: data.whatsappUrl ?? null,
+          socialUrl: data.socialUrl ?? null,
+          placement: data.placement,
+          status: data.status ?? SponsoredAdStatus.DRAFT,
+          startsAt: data.startsAt ?? null,
+          endsAt: data.endsAt ?? null,
+          sortOrder: data.sortOrder ?? 0,
+          clicks: data.clicks ?? 0,
+          impressions: data.impressions ?? 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        sponsoredAds.push(ad);
+        return Promise.resolve(ad);
+      }),
+      findMany: jest.fn(({ where } = {}) => {
+        let result = [...sponsoredAds];
+        if (where?.status) {
+          result = result.filter((ad) => ad.status === where.status);
+        }
+        if (where?.placement) {
+          result = result.filter((ad) => ad.placement === where.placement);
+        }
+        if (where?.AND) {
+          const now =
+            where.AND[0]?.OR?.[1]?.startsAt?.lte ??
+            where.AND[1]?.OR?.[1]?.endsAt?.gte ??
+            new Date();
+          result = result.filter(
+            (ad) =>
+              (!ad.startsAt || ad.startsAt <= now) &&
+              (!ad.endsAt || ad.endsAt >= now),
+          );
+        }
+        result.sort(
+          (a, b) =>
+            a.sortOrder - b.sortOrder ||
+            b.createdAt.getTime() - a.createdAt.getTime(),
+        );
+        return Promise.resolve(result);
+      }),
+      findUnique: jest.fn(({ where }) =>
+        Promise.resolve(sponsoredAds.find((ad) => ad.id === where.id) ?? null),
+      ),
+      update: jest.fn(({ where, data }) => {
+        const ad = sponsoredAds.find((item) => item.id === where.id);
+        if (!ad) throw new Error('not found');
+        if (data.clicks?.increment) {
+          ad.clicks += data.clicks.increment;
+          delete data.clicks;
+        }
+        if (data.impressions?.increment) {
+          ad.impressions += data.impressions.increment;
+          delete data.impressions;
+        }
+        Object.assign(ad, data, { updatedAt: new Date() });
+        return Promise.resolve(ad);
+      }),
+      delete: jest.fn(({ where }) => {
+        const index = sponsoredAds.findIndex((item) => item.id === where.id);
+        const [ad] = sponsoredAds.splice(index, 1);
+        return Promise.resolve(ad);
+      }),
+    },
     contactMessage: {
       create: jest.fn(({ data }) => {
         const message: MockContactMessage = {
@@ -1239,6 +1492,8 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
     homepageContent.length = 0;
     faqs.length = 0;
     sponsors.length = 0;
+    sponsoredAds.length = 0;
+    manualVotePayments.length = 0;
     competitionRules.length = 0;
     contactMessages.length = 0;
     engagementBreakdowns.length = 0;
@@ -1307,6 +1562,260 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         password: 'password123',
       });
   }
+
+  it('supports admin-managed sponsored ads and public tracking', async () => {
+    const adminAuth = await registerUser('ads-admin@example.com');
+    users[0].role = UserRole.ADMIN;
+
+    const activeAdResponse = await request(app.getHttpServer())
+      .post('/api/admin/ads')
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .send({
+        title: 'Leaderboard sponsor',
+        productName: 'Novo Boost',
+        description: 'Promoted product for contestants',
+        imageUrl: 'https://example.com/ad.jpg',
+        videoUrl: 'https://res.cloudinary.com/test/video/upload/ad.mp4',
+        videoPublicId: 'novorivera-test/ad',
+        targetUrl: 'https://example.com/product',
+        whatsappUrl: 'https://wa.me/2348000000000',
+        socialUrl: 'https://instagram.com/novoriviera',
+        placement: SponsoredAdPlacement.LEADERBOARD,
+        status: SponsoredAdStatus.ACTIVE,
+        startsAt: '2020-01-01T00:00:00.000Z',
+        endsAt: '2099-01-01T00:00:00.000Z',
+        sortOrder: 2,
+      })
+      .expect(201);
+
+    expect(activeAdResponse.body).toMatchObject({
+      title: 'Leaderboard sponsor',
+      productName: 'Novo Boost',
+      placement: SponsoredAdPlacement.LEADERBOARD,
+      status: SponsoredAdStatus.ACTIVE,
+      clicks: 0,
+      impressions: 0,
+    });
+
+    await request(app.getHttpServer())
+      .post('/api/admin/ads')
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .send({
+        title: 'Paused sponsor',
+        productName: 'Paused Product',
+        description: 'Should not be public',
+        placement: SponsoredAdPlacement.LEADERBOARD,
+        status: SponsoredAdStatus.PAUSED,
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post('/api/admin/ads')
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .send({
+        title: 'Expired sponsor',
+        productName: 'Expired Product',
+        description: 'Should not be public',
+        placement: SponsoredAdPlacement.LEADERBOARD,
+        status: SponsoredAdStatus.ACTIVE,
+        endsAt: '2020-01-01T00:00:00.000Z',
+      })
+      .expect(201);
+
+    const publicAdsResponse = await request(app.getHttpServer())
+      .get(`/api/ads?placement=${SponsoredAdPlacement.LEADERBOARD}`)
+      .expect(200);
+
+    expect(publicAdsResponse.body).toHaveLength(1);
+    expect(publicAdsResponse.body[0]).toMatchObject({
+      id: activeAdResponse.body.id,
+      targetUrl: 'https://example.com/product',
+      whatsappUrl: 'https://wa.me/2348000000000',
+      socialUrl: 'https://instagram.com/novoriviera',
+    });
+
+    const impressionResponse = await request(app.getHttpServer())
+      .post(`/api/ads/${activeAdResponse.body.id}/impression`)
+      .expect(201);
+    expect(impressionResponse.body.impressions).toBe(1);
+
+    const clickResponse = await request(app.getHttpServer())
+      .post(`/api/ads/${activeAdResponse.body.id}/click`)
+      .expect(201);
+    expect(clickResponse.body.clicks).toBe(1);
+
+    const adminListResponse = await request(app.getHttpServer())
+      .get('/api/admin/ads')
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .expect(200);
+    expect(adminListResponse.body).toHaveLength(3);
+
+    await request(app.getHttpServer())
+      .get(`/api/admin/ads/${activeAdResponse.body.id}`)
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .expect(200);
+
+    const pausedResponse = await request(app.getHttpServer())
+      .patch(`/api/admin/ads/${activeAdResponse.body.id}`)
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .send({ status: SponsoredAdStatus.PAUSED })
+      .expect(200);
+    expect(pausedResponse.body.status).toBe(SponsoredAdStatus.PAUSED);
+
+    await request(app.getHttpServer())
+      .delete(`/api/admin/ads/${activeAdResponse.body.id}`)
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .expect(200);
+
+    const auditResponse = await request(app.getHttpServer())
+      .get('/api/admin/audit-logs?action=SPONSORED_AD_CREATE')
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .expect(200);
+    expect(auditResponse.body.total).toBe(3);
+  });
+
+  it('supports public manual transfer voting with admin verification', async () => {
+    const adminAuth = await registerUser('manual-votes-admin@example.com');
+    users[0].role = UserRole.ADMIN;
+    const contestantAuth = await registerUser('manual-voter-star@example.com');
+
+    const competitionResponse = await request(app.getHttpServer())
+      .post('/api/competitions')
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .send({
+        title: 'Manual Vote Talent',
+        slug: 'manual-vote-talent',
+        status: CompetitionStatus.PUBLISHED,
+        manualVotingEnabled: true,
+        votePriceNaira: 500,
+        paymentBankName: 'Novo Bank',
+        paymentAccountName: 'NovoRivera Votes',
+        paymentAccountNumber: '1234567890',
+        paymentInstructions: 'Transfer and include contestant code.',
+      })
+      .expect(201);
+
+    const contestantResponse = await request(app.getHttpServer())
+      .post(`/api/competitions/${competitionResponse.body.id}/contestants`)
+      .set('Authorization', `Bearer ${contestantAuth.body.token}`)
+      .send({
+        displayName: 'Manual Vote Star',
+        bio: 'Public vote contestant',
+      })
+      .expect(201);
+
+    expect(contestantResponse.body.contestantCode).toMatch(/^NRV-\d{6}$/);
+
+    const profileByCodeResponse = await request(app.getHttpServer())
+      .get(`/api/contestants/code/${contestantResponse.body.contestantCode}`)
+      .expect(200);
+    expect(profileByCodeResponse.body).toMatchObject({
+      id: contestantResponse.body.id,
+      contestantCode: contestantResponse.body.contestantCode,
+    });
+
+    const voteInfoResponse = await request(app.getHttpServer())
+      .get(
+        `/api/contestants/code/${contestantResponse.body.contestantCode}/vote-info`,
+      )
+      .expect(200);
+    expect(voteInfoResponse.body).toMatchObject({
+      votePriceNaira: 500,
+      bankName: 'Novo Bank',
+      accountName: 'NovoRivera Votes',
+      accountNumber: '1234567890',
+      requiredNarration: contestantResponse.body.contestantCode,
+    });
+
+    const pendingVoteResponse = await request(app.getHttpServer())
+      .post('/api/public-votes')
+      .send({
+        contestantCode: contestantResponse.body.contestantCode,
+        competitionId: competitionResponse.body.id,
+        voterName: 'John Doe',
+        voterPhone: '08000000000',
+        voterEmail: 'john@example.com',
+        amountPaid: 1200,
+        transferReference: 'BANK-REF-1',
+        paymentNarration: contestantResponse.body.contestantCode,
+        proofImageUrl: 'https://example.com/proof.jpg',
+        note: 'Paid for two votes',
+      })
+      .expect(201);
+
+    expect(pendingVoteResponse.body).toMatchObject({
+      status: ManualVotePaymentStatus.PENDING,
+      amountPaid: 1200,
+      votePriceNaira: 500,
+      votesCalculated: 2,
+    });
+    expect(contestants[0].totalVotes).toBe(0);
+
+    const approvedResponse = await request(app.getHttpServer())
+      .patch(`/api/admin/public-votes/${pendingVoteResponse.body.id}/status`)
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .send({
+        status: ManualVotePaymentStatus.APPROVED,
+        adminNote: 'Payment confirmed',
+      })
+      .expect(200);
+    expect(approvedResponse.body.status).toBe(ManualVotePaymentStatus.APPROVED);
+    expect(contestants[0].totalVotes).toBe(2);
+
+    await request(app.getHttpServer())
+      .patch(`/api/admin/public-votes/${pendingVoteResponse.body.id}/status`)
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .send({ status: ManualVotePaymentStatus.APPROVED })
+      .expect(200);
+    expect(contestants[0].totalVotes).toBe(2);
+
+    const rejectedVoteResponse = await request(app.getHttpServer())
+      .post('/api/public-votes')
+      .send({
+        contestantCode: contestantResponse.body.contestantCode,
+        competitionId: competitionResponse.body.id,
+        voterName: 'Jane Doe',
+        voterPhone: '08100000000',
+        amountPaid: 500,
+        paymentNarration: contestantResponse.body.contestantCode,
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .patch(`/api/admin/public-votes/${rejectedVoteResponse.body.id}/status`)
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .send({
+        status: ManualVotePaymentStatus.REJECTED,
+        adminNote: 'Could not verify transfer',
+      })
+      .expect(200);
+    expect(contestants[0].totalVotes).toBe(2);
+
+    await request(app.getHttpServer())
+      .patch(`/api/admin/public-votes/${pendingVoteResponse.body.id}/status`)
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .send({ status: ManualVotePaymentStatus.REJECTED })
+      .expect(200);
+    expect(contestants[0].totalVotes).toBe(0);
+
+    const filteredAdminListResponse = await request(app.getHttpServer())
+      .get(
+        `/api/admin/public-votes?status=${ManualVotePaymentStatus.REJECTED}&competitionId=${competitionResponse.body.id}&contestantCode=${contestantResponse.body.contestantCode}`,
+      )
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .expect(200);
+    expect(filteredAdminListResponse.body).toHaveLength(2);
+
+    const leaderboardResponse = await request(app.getHttpServer())
+      .get(`/api/competitions/${competitionResponse.body.id}/leaderboard`)
+      .expect(200);
+    expect(leaderboardResponse.body[0]).toMatchObject({
+      contestantId: contestantResponse.body.id,
+      contestantCode: contestantResponse.body.contestantCode,
+      photoUrl: null,
+      totalVotes: 0,
+    });
+  });
 
   it('runs the competition, contestant, submission, and leaderboard flow', async () => {
     const adminAuth = await registerUser('admin@example.com');

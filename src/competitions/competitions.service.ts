@@ -75,7 +75,8 @@ export class CompetitionsService {
       throw new NotFoundException('Competition not found');
     }
 
-    return competition;
+    const isAdmin = role === UserRole.ADMIN || role === UserRole.SUPER_ADMIN;
+    return isAdmin ? competition : this.toPublicCompetition(competition);
   }
 
   async update(id: string, dto: UpdateCompetitionDto) {
@@ -180,6 +181,7 @@ export class CompetitionsService {
           rank: index + 1,
           entrantCount,
           contestantId: contestant.id,
+          contestantCode: contestant.contestantCode,
           displayName: contestant.displayName,
           photoUrl: contestant.photoUrl,
           status: contestant.status,
@@ -350,6 +352,29 @@ export class CompetitionsService {
       prizeThird: dto.prizeThird,
       rules: dto.rules,
       ownerId,
+      manualVotingEnabled: dto.manualVotingEnabled,
+      votePriceNaira: dto.votePriceNaira,
+      paymentBankName: dto.paymentBankName,
+      paymentAccountName: dto.paymentAccountName,
+      paymentAccountNumber: dto.paymentAccountNumber,
+      paymentInstructions: dto.paymentInstructions,
+    };
+  }
+
+  private toPublicCompetition<T extends { manualVotingEnabled: boolean }>(
+    competition: T,
+  ) {
+    if (competition.manualVotingEnabled) {
+      return competition;
+    }
+
+    return {
+      ...competition,
+      votePriceNaira: undefined,
+      paymentBankName: undefined,
+      paymentAccountName: undefined,
+      paymentAccountNumber: undefined,
+      paymentInstructions: undefined,
     };
   }
 

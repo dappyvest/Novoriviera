@@ -31,7 +31,7 @@ type UploadedMultipartFile = {
 
 const maxUploadSizeMb = Number(process.env.MAX_UPLOAD_SIZE_MB ?? 100);
 const maxVideoUploadSizeMb = Number(
-  process.env.MAX_VIDEO_UPLOAD_SIZE_MB ?? maxUploadSizeMb,
+  process.env.MAX_VIDEO_UPLOAD_SIZE_MB ?? 50,
 );
 const maxUploadSizeBytes = maxUploadSizeMb * 1024 * 1024;
 const maxVideoUploadSizeBytes = maxVideoUploadSizeMb * 1024 * 1024;

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AdsModule } from '../ads/ads.module';
 import { CoinPackagesModule } from '../coin-packages/coin-packages.module';
 import { ContestantsModule } from '../contestants/contestants.module';
 import { PaymentsModule } from '../payments/payments.module';
@@ -10,6 +11,7 @@ import { AdminService } from './admin.service';
 
 @Module({
   imports: [
+    AdsModule,
     CoinPackagesModule,
     ContestantsModule,
     PaymentsModule,

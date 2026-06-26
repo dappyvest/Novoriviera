@@ -1,5 +1,13 @@
 import { CompetitionStatus } from '@prisma/client';
-import { IsEnum, IsISO8601, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsISO8601,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 
 export class CreateCompetitionDto {
   @IsString()
@@ -43,4 +51,29 @@ export class CreateCompetitionDto {
   @IsString()
   @IsOptional()
   rules?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  manualVotingEnabled?: boolean;
+
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  votePriceNaira?: number;
+
+  @IsString()
+  @IsOptional()
+  paymentBankName?: string;
+
+  @IsString()
+  @IsOptional()
+  paymentAccountName?: string;
+
+  @IsString()
+  @IsOptional()
+  paymentAccountNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  paymentInstructions?: string;
 }

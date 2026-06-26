@@ -43,9 +43,11 @@ export class ContestantsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      const contestantCode = await this.generateContestantCode(tx);
       const contestant = await tx.contestant.create({
         data: {
           ...dto,
+          contestantCode,
           userId,
           competitionId,
           status: ContestantStatus.PENDING,
@@ -127,9 +129,60 @@ export class ContestantsService {
   }
 
   async findPublicProfile(id: string) {
+    return this.findPublicProfileByWhere({ id });
+  }
+
+  async findPublicProfileByCode(contestantCode: string) {
+    return this.findPublicProfileByWhere({ contestantCode });
+  }
+
+  async getVoteInfo(contestantCode: string) {
     const contestant = await this.prisma.contestant.findFirst({
       where: {
-        id,
+        contestantCode,
+        status: { notIn: publicContestantBlockedStatuses },
+      },
+      include: {
+        competition: true,
+      },
+    });
+
+    if (!contestant || !contestant.competition.manualVotingEnabled) {
+      throw new NotFoundException('Vote information not found');
+    }
+
+    return {
+      contestant: {
+        id: contestant.id,
+        contestantCode: contestant.contestantCode,
+        displayName: contestant.displayName,
+        photoUrl: contestant.photoUrl,
+        status: contestant.status,
+      },
+      competition: {
+        id: contestant.competition.id,
+        title: contestant.competition.title,
+        slug: contestant.competition.slug,
+        bannerUrl: contestant.competition.bannerUrl,
+      },
+      votePriceNaira: contestant.competition.votePriceNaira,
+      bankName: contestant.competition.paymentBankName,
+      accountName: contestant.competition.paymentAccountName,
+      accountNumber: contestant.competition.paymentAccountNumber,
+      paymentInstructions: contestant.competition.paymentInstructions,
+      requiredNarration: contestant.contestantCode,
+      contestantCode: contestant.contestantCode,
+    };
+  }
+
+  private async findPublicProfileByWhere(
+    where:
+      | { id: string; contestantCode?: never }
+      | { contestantCode: string; id?: never },
+  ) {
+    const contestant = await this.prisma.contestant.findFirst({
+      where: {
+        ...where,
         status: { notIn: publicContestantBlockedStatuses },
       },
       include: {
@@ -163,6 +216,7 @@ export class ContestantsService {
 
     return {
       id: contestant.id,
+      contestantCode: contestant.contestantCode,
       displayName: contestant.displayName,
       bio: contestant.bio,
       age: contestant.age,
@@ -315,5 +369,21 @@ export class ContestantsService {
     }
 
     return total;
+  }
+
+  private async generateContestantCode(tx: Prisma.TransactionClient) {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const candidate = `NRV-${Math.floor(100000 + Math.random() * 900000)}`;
+      const existing = await tx.contestant.findUnique({
+        where: { contestantCode: candidate },
+        select: { id: true },
+      });
+
+      if (!existing) {
+        return candidate;
+      }
+    }
+
+    throw new ConflictException('Could not generate unique contestant code');
   }
 }

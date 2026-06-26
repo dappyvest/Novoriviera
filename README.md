@@ -597,6 +597,123 @@ Content-Type: application/json
 
 CMS admin changes write `AdminAuditLog` entries for settings, homepage, FAQs, sponsors, rules, and contact message status updates.
 
+## Manual Public Voting
+
+Manual transfer voting is the primary public voting flow. Contestants still register and log in, but voters do not create accounts. Contestants share their public profile or contestant code link, voters transfer to the configured competition bank account, include the contestant code in the transfer narration, and submit payment details for admin verification.
+
+Contestants receive a unique `contestantCode` automatically on registration, for example `NRV-100001`. Public profiles are available by id or code:
+
+```http
+GET /api/contestants/:id
+GET /api/contestants/code/:contestantCode
+GET /api/contestants/code/:contestantCode/vote-info
+```
+
+`vote-info` returns the contestant summary, competition summary, `votePriceNaira`, bank/account details, payment instructions, and `requiredNarration` equal to the contestant code. `contestantCode` is included in contestant profile responses, leaderboard rows, admin contestant responses, and contestant dashboard responses.
+
+Admins configure manual voting on competitions through the existing create/update competition payload:
+
+```json
+{
+  "manualVotingEnabled": true,
+  "votePriceNaira": 500,
+  "paymentBankName": "Novo Bank",
+  "paymentAccountName": "NovoRivera Votes",
+  "paymentAccountNumber": "1234567890",
+  "paymentInstructions": "Transfer and include the contestant code in narration."
+}
+```
+
+Public competition detail exposes bank/payment settings only when `manualVotingEnabled` is `true`.
+
+Voters submit transfer proof without authentication:
+
+```http
+POST /api/public-votes
+Content-Type: application/json
+
+{
+  "contestantCode": "NRV-100001",
+  "competitionId": "competition-id",
+  "voterName": "John Doe",
+  "voterPhone": "08000000000",
+  "voterEmail": "john@example.com",
+  "amountPaid": 1000,
+  "transferReference": "BANK-REF-1",
+  "paymentNarration": "NRV-100001",
+  "proofImageUrl": "https://example.com/proof.jpg",
+  "note": "Optional note"
+}
+```
+
+The API validates the contestant code, competition match, contestant eligibility, manual voting status, and minimum amount. It stores a `PENDING` manual vote payment and calculates `votesCalculated = floor(amountPaid / votePriceNaira)`. Contestant `totalVotes` is not incremented until admin approval.
+
+Admin manual vote review endpoints require `ADMIN` or `SUPER_ADMIN`:
+
+```http
+GET /api/admin/public-votes?status=PENDING&competitionId=competition-id&contestantCode=NRV-100001
+GET /api/admin/public-votes/:id
+PATCH /api/admin/public-votes/:id/status
+Authorization: Bearer <admin-token>
+Content-Type: application/json
+
+{
+  "status": "APPROVED",
+  "adminNote": "Payment confirmed"
+}
+```
+
+Approving a pending/rejected payment increments the contestant by `votesCalculated` once. Approving an already approved payment is idempotent and does not double-count. Rejecting an approved payment subtracts `votesCalculated` safely. Rejected pending payments do not increment votes. All status updates write `AdminAuditLog` entries with `PUBLIC_VOTE_STATUS_UPDATE`.
+
+The old wallet/coin voting code remains in place for future use, but public manual transfer voting should be used for new voter-facing screens.
+
+## Sponsored Ads Management
+
+Admins can manage website ads from the dashboard. Ads are stored as `SponsoredAd` records with optional image/video creative URLs, optional `targetUrl`, `whatsappUrl`, and `socialUrl`, placement, status, date window, ordering, clicks, and impressions.
+
+Public ad endpoints:
+
+```http
+GET /api/ads?placement=HOME_TOP
+POST /api/ads/:id/click
+POST /api/ads/:id/impression
+```
+
+`GET /api/ads` returns only `ACTIVE` ads whose `startsAt` and `endsAt` window includes the current time. Results are ordered by `sortOrder` ascending, then newest first. Valid placements are `HOME_TOP`, `HOME_MIDDLE`, `LEADERBOARD`, `COMPETITION_PAGE`, and `CONTESTANT_PAGE`.
+
+Admin ad endpoints require `ADMIN` or `SUPER_ADMIN`:
+
+```http
+POST /api/admin/ads
+GET /api/admin/ads
+GET /api/admin/ads/:id
+PATCH /api/admin/ads/:id
+DELETE /api/admin/ads/:id
+Authorization: Bearer <admin-token>
+Content-Type: application/json
+
+{
+  "title": "Leaderboard sponsor",
+  "productName": "Novo Boost",
+  "description": "Promoted product for contestants",
+  "imageUrl": "https://res.cloudinary.com/cloud/image/upload/novorivera/ad.jpg",
+  "videoUrl": "https://res.cloudinary.com/cloud/video/upload/novorivera/ad.mp4",
+  "videoPublicId": "novorivera/ad",
+  "targetUrl": "https://example.com/product",
+  "whatsappUrl": "https://wa.me/2348000000000",
+  "socialUrl": "https://instagram.com/novoriviera",
+  "placement": "LEADERBOARD",
+  "status": "ACTIVE",
+  "startsAt": "2026-07-01T00:00:00.000Z",
+  "endsAt": "2026-08-01T00:00:00.000Z",
+  "sortOrder": 1
+}
+```
+
+Use existing upload routes for ad creative assets: `/api/uploads/image` for images and `/api/uploads/video` for videos. Ad videos use the same video endpoint and default to the 50 MB upload limit. Frontend ad clicks should open the first configured destination in this order: `targetUrl`, `whatsappUrl`, then `socialUrl`.
+
+Ads must be rendered in page slots only and should not interrupt voting or submission flows. Admin ad create/update/delete operations write `AdminAuditLog` entries with `SPONSORED_AD_CREATE`, `SPONSORED_AD_UPDATE`, and `SPONSORED_AD_DELETE`.
+
 ## Phase 7 Cloudinary Uploads, Public Profiles, Scoring, Winners, And MVP Polish
 
 ### Cloudinary Environment
@@ -609,7 +726,7 @@ CLOUDINARY_API_KEY="replace-with-api-key"
 CLOUDINARY_API_SECRET="replace-with-api-secret"
 CLOUDINARY_UPLOAD_FOLDER="novorivera"
 MAX_UPLOAD_SIZE_MB=100
-MAX_VIDEO_UPLOAD_SIZE_MB=100
+MAX_VIDEO_UPLOAD_SIZE_MB=50
 ```
 
 Do not expose `CLOUDINARY_API_SECRET` to the frontend.
@@ -624,7 +741,7 @@ Content-Type: multipart/form-data
 file=<video file>
 ```
 
-The video upload endpoint accepts MP4, MOV, WebM, AVI, MKV, and 3GP files and uploads to Cloudinary under `CLOUDINARY_UPLOAD_FOLDER`. The maximum video size is controlled by `MAX_VIDEO_UPLOAD_SIZE_MB` (default `100` MB, falling back to `MAX_UPLOAD_SIZE_MB`). Videos are written to temporary disk storage and streamed to Cloudinary rather than held in application memory. Oversized files return a JSON `413 Payload Too Large` response.
+The video upload endpoint accepts MP4, MOV, WebM, AVI, MKV, and 3GP files and uploads to Cloudinary under `CLOUDINARY_UPLOAD_FOLDER`. The maximum video size is controlled by `MAX_VIDEO_UPLOAD_SIZE_MB` (default `50` MB). Videos are written to temporary disk storage and streamed to Cloudinary rather than held in application memory. Oversized files return a JSON `413 Payload Too Large` response.
 
 Authenticated image uploads:
 

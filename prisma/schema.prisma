@@ -85,6 +85,27 @@ enum WinnerPlacement {
   THIRD
 }
 
+enum SponsoredAdPlacement {
+  HOME_TOP
+  HOME_MIDDLE
+  LEADERBOARD
+  COMPETITION_PAGE
+  CONTESTANT_PAGE
+}
+
+enum SponsoredAdStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  EXPIRED
+}
+
+enum ManualVotePaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model CoinPackage {
   id         String   @id @default(cuid())
   name       String
@@ -116,6 +137,7 @@ model User {
   coinWallet     CoinWallet?
   payments       Payment[]
   auditLogs      AdminAuditLog[]   @relation("AdminAuditActor")
+  verifiedManualVotePayments ManualVotePayment[] @relation("ManualVoteVerifier")
   coinTransactions CoinTransaction[]
 }
 
@@ -132,6 +154,12 @@ model Competition {
   prizeSecond String?
   prizeThird  String?
   rules       String?
+  manualVotingEnabled Boolean @default(true)
+  votePriceNaira Int @default(500)
+  paymentBankName String?
+  paymentAccountName String?
+  paymentAccountNumber String?
+  paymentInstructions String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -143,6 +171,7 @@ model Competition {
   votes       Vote[]
   payments    Payment[]
   winners     CompetitionWinner[]
+  manualVotePayments ManualVotePayment[]
 }
 
 model Stage {
@@ -170,6 +199,7 @@ model Stage {
 
 model Contestant {
   id          String           @id @default(cuid())
+  contestantCode String        @unique
   displayName String
   bio         String?
   age         Int?
@@ -195,8 +225,40 @@ model Contestant {
   submissions   Submission[]
   engagementBreakdowns EngagementBreakdown[]
   winnerPlacements CompetitionWinner[]
+  manualVotePayments ManualVotePayment[]
 
   @@unique([competitionId, userId])
+}
+
+model ManualVotePayment {
+  id                String                  @id @default(cuid())
+  contestantCode    String
+  voterName         String
+  voterPhone        String
+  voterEmail        String?
+  amountPaid        Int
+  votePriceNaira    Int
+  votesCalculated   Int
+  transferReference String?
+  paymentNarration  String?
+  proofImageUrl     String?
+  note              String?
+  status            ManualVotePaymentStatus @default(PENDING)
+  adminNote         String?
+  verifiedAt        DateTime?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  contestantId String
+  contestant   Contestant @relation(fields: [contestantId], references: [id], onDelete: Cascade)
+  competitionId String
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  verifiedById String?
+  verifiedBy   User? @relation("ManualVoteVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([competitionId, status])
+  @@index([contestantCode])
 }
 
 model Submission {
@@ -400,6 +462,32 @@ model Sponsor {
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+model SponsoredAd {
+  id            String               @id @default(cuid())
+  title         String
+  productName   String
+  description   String
+  imageUrl      String?
+  videoUrl      String?
+  videoPublicId String?
+  targetUrl     String?
+  whatsappUrl   String?
+  socialUrl     String?
+  placement     SponsoredAdPlacement
+  status        SponsoredAdStatus    @default(DRAFT)
+  startsAt      DateTime?
+  endsAt        DateTime?
+  sortOrder     Int                  @default(0)
+  clicks        Int                  @default(0)
+  impressions   Int                  @default(0)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@index([placement, status, sortOrder])
+  @@index([startsAt])
+  @@index([endsAt])
 }
 
 model CompetitionRules {
