@@ -12,6 +12,7 @@ import {
   ManualVotePaymentStatus,
   PaymentProvider,
   PaymentStatus,
+  SponsoredAdDestinationType,
   SponsoredAdPlacement,
   SponsoredAdStatus,
   StageStatus,
@@ -258,6 +259,10 @@ type MockSponsoredAd = {
   whatsappUrl: string | null;
   socialUrl: string | null;
   placement: SponsoredAdPlacement;
+  placements: SponsoredAdPlacement[];
+  destinationType: SponsoredAdDestinationType;
+  destinationValue: string | null;
+  buttonText: string | null;
   status: SponsoredAdStatus;
   startsAt: Date | null;
   endsAt: Date | null;
@@ -489,7 +494,13 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       update: jest.fn(({ where, data }) => {
         const competition = competitions.find((item) => item.id === where.id);
         if (!competition) throw new Error('not found');
-        Object.assign(competition, data, { updatedAt: new Date() });
+        Object.assign(
+          competition,
+          Object.fromEntries(
+            Object.entries(data).filter(([, value]) => value !== undefined),
+          ),
+          { updatedAt: new Date() },
+        );
         return Promise.resolve(competition);
       }),
       delete: jest.fn(({ where }) => {
@@ -1385,6 +1396,11 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
           whatsappUrl: data.whatsappUrl ?? null,
           socialUrl: data.socialUrl ?? null,
           placement: data.placement,
+          placements: data.placements ?? [data.placement],
+          destinationType:
+            data.destinationType ?? SponsoredAdDestinationType.WEBSITE,
+          destinationValue: data.destinationValue ?? null,
+          buttonText: data.buttonText ?? null,
           status: data.status ?? SponsoredAdStatus.DRAFT,
           startsAt: data.startsAt ?? null,
           endsAt: data.endsAt ?? null,
@@ -1404,6 +1420,13 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         }
         if (where?.placement) {
           result = result.filter((ad) => ad.placement === where.placement);
+        }
+        if (where?.OR) {
+          const placement = where.OR[0]?.placement;
+          result = result.filter(
+            (ad) =>
+              ad.placement === placement || ad.placements.includes(placement),
+          );
         }
         if (where?.AND) {
           const now =
@@ -1577,10 +1600,13 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         imageUrl: 'https://example.com/ad.jpg',
         videoUrl: 'https://res.cloudinary.com/test/video/upload/ad.mp4',
         videoPublicId: 'novorivera-test/ad',
-        targetUrl: 'https://example.com/product',
-        whatsappUrl: 'https://wa.me/2348000000000',
-        socialUrl: 'https://instagram.com/novoriviera',
-        placement: SponsoredAdPlacement.LEADERBOARD,
+        placements: [
+          SponsoredAdPlacement.HOME_TOP,
+          SponsoredAdPlacement.LEADERBOARD,
+        ],
+        destinationType: SponsoredAdDestinationType.WHATSAPP,
+        destinationValue: '08000000000',
+        buttonText: 'Chat on WhatsApp',
         status: SponsoredAdStatus.ACTIVE,
         startsAt: '2020-01-01T00:00:00.000Z',
         endsAt: '2099-01-01T00:00:00.000Z',
@@ -1591,11 +1617,37 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
     expect(activeAdResponse.body).toMatchObject({
       title: 'Leaderboard sponsor',
       productName: 'Novo Boost',
-      placement: SponsoredAdPlacement.LEADERBOARD,
+      placement: SponsoredAdPlacement.HOME_TOP,
+      placements: [
+        SponsoredAdPlacement.HOME_TOP,
+        SponsoredAdPlacement.LEADERBOARD,
+      ],
+      destinationType: SponsoredAdDestinationType.WHATSAPP,
+      destinationValue: '08000000000',
+      targetUrl: 'https://wa.me/2348000000000',
+      whatsappUrl: 'https://wa.me/2348000000000',
+      buttonText: 'Chat on WhatsApp',
       status: SponsoredAdStatus.ACTIVE,
       clicks: 0,
       impressions: 0,
+      ctr: 0,
+      displayPriority: 2,
     });
+
+    const invalidAdResponse = await request(app.getHttpServer())
+      .post('/api/admin/ads')
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .send({
+        title: 'Invalid sponsor',
+        productName: 'Invalid Product',
+        description: 'Missing placement fields',
+      })
+      .expect(400);
+    expect(invalidAdResponse.body.message).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('placement must be one of'),
+      ]),
+    );
 
     await request(app.getHttpServer())
       .post('/api/admin/ads')
@@ -1629,9 +1681,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
     expect(publicAdsResponse.body).toHaveLength(1);
     expect(publicAdsResponse.body[0]).toMatchObject({
       id: activeAdResponse.body.id,
-      targetUrl: 'https://example.com/product',
+      targetUrl: 'https://wa.me/2348000000000',
       whatsappUrl: 'https://wa.me/2348000000000',
-      socialUrl: 'https://instagram.com/novoriviera',
+      ctr: 0,
     });
 
     const impressionResponse = await request(app.getHttpServer())
@@ -1643,12 +1695,31 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       .post(`/api/ads/${activeAdResponse.body.id}/click`)
       .expect(201);
     expect(clickResponse.body.clicks).toBe(1);
+    expect(clickResponse.body.ctr).toBe(100);
 
     const adminListResponse = await request(app.getHttpServer())
       .get('/api/admin/ads')
       .set('Authorization', `Bearer ${adminAuth.body.token}`)
       .expect(200);
     expect(adminListResponse.body).toHaveLength(3);
+    const activeAdminAd = adminListResponse.body.find(
+      (ad: { id: string }) => ad.id === activeAdResponse.body.id,
+    );
+    expect(activeAdminAd).toEqual(
+      expect.objectContaining({
+        placements: [
+          SponsoredAdPlacement.HOME_TOP,
+          SponsoredAdPlacement.LEADERBOARD,
+        ],
+        destinationType: SponsoredAdDestinationType.WHATSAPP,
+        destinationValue: '08000000000',
+        targetUrl: 'https://wa.me/2348000000000',
+        impressions: 1,
+        clicks: 1,
+        ctr: 100,
+        displayPriority: 2,
+      }),
+    );
 
     await request(app.getHttpServer())
       .get(`/api/admin/ads/${activeAdResponse.body.id}`)
@@ -1724,7 +1795,54 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       bankName: 'Novo Bank',
       accountName: 'NovoRivera Votes',
       accountNumber: '1234567890',
+      paymentInstructions: 'Transfer and include contestant code.',
       requiredNarration: contestantResponse.body.contestantCode,
+    });
+
+    const updatedCompetitionResponse = await request(app.getHttpServer())
+      .patch(`/api/competitions/${competitionResponse.body.id}`)
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .send({
+        manualVotingEnabled: true,
+        paymentBankName: 'Updated Bank',
+        paymentAccountName: 'Updated Votes Account',
+        paymentAccountNumber: '9990001112',
+        paymentInstructions: 'Use your contestant code as narration.',
+        votePriceNaira: 1000,
+      })
+      .expect(200);
+    expect(updatedCompetitionResponse.body).toMatchObject({
+      manualVotingEnabled: true,
+      votePriceNaira: 1000,
+      paymentBankName: 'Updated Bank',
+      paymentAccountName: 'Updated Votes Account',
+      paymentAccountNumber: '9990001112',
+      paymentInstructions: 'Use your contestant code as narration.',
+    });
+
+    const publicCompetitionResponse = await request(app.getHttpServer())
+      .get(`/api/competitions/${competitionResponse.body.id}`)
+      .expect(200);
+    expect(publicCompetitionResponse.body).toMatchObject({
+      manualVotingEnabled: true,
+      votePriceNaira: 1000,
+      paymentBankName: 'Updated Bank',
+      paymentAccountName: 'Updated Votes Account',
+      paymentAccountNumber: '9990001112',
+      paymentInstructions: 'Use your contestant code as narration.',
+    });
+
+    const updatedVoteInfoResponse = await request(app.getHttpServer())
+      .get(
+        `/api/contestants/code/${contestantResponse.body.contestantCode}/vote-info`,
+      )
+      .expect(200);
+    expect(updatedVoteInfoResponse.body).toMatchObject({
+      votePriceNaira: 1000,
+      bankName: 'Updated Bank',
+      accountName: 'Updated Votes Account',
+      accountNumber: '9990001112',
+      paymentInstructions: 'Use your contestant code as narration.',
     });
 
     const pendingVoteResponse = await request(app.getHttpServer())
@@ -1735,7 +1853,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         voterName: 'John Doe',
         voterPhone: '08000000000',
         voterEmail: 'john@example.com',
-        amountPaid: 1200,
+        amountPaid: 2200,
         transferReference: 'BANK-REF-1',
         paymentNarration: contestantResponse.body.contestantCode,
         proofImageUrl: 'https://example.com/proof.jpg',
@@ -1745,8 +1863,8 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
 
     expect(pendingVoteResponse.body).toMatchObject({
       status: ManualVotePaymentStatus.PENDING,
-      amountPaid: 1200,
-      votePriceNaira: 500,
+      amountPaid: 2200,
+      votePriceNaira: 1000,
       votesCalculated: 2,
     });
     expect(contestants[0].totalVotes).toBe(0);
@@ -1776,7 +1894,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         competitionId: competitionResponse.body.id,
         voterName: 'Jane Doe',
         voterPhone: '08100000000',
-        amountPaid: 500,
+        amountPaid: 1000,
         paymentNarration: contestantResponse.body.contestantCode,
       })
       .expect(201);

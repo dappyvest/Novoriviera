@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  SponsoredAdDestinationType,
   SponsoredAdPlacement,
   SponsoredAdStatus,
 } from '@prisma/client';
@@ -38,7 +39,14 @@ describe('AdsService', () => {
   });
 
   it('creates ads with mapped date windows', async () => {
-    sponsoredAdCreate.mockResolvedValue({ id: 'ad-1' });
+    sponsoredAdCreate.mockResolvedValue({
+      id: 'ad-1',
+      placement: SponsoredAdPlacement.HOME_TOP,
+      placements: [SponsoredAdPlacement.HOME_TOP],
+      clicks: 0,
+      impressions: 0,
+      sortOrder: 0,
+    });
 
     await service.create({
       title: 'Top banner',
@@ -54,9 +62,59 @@ describe('AdsService', () => {
       data: expect.objectContaining({
         title: 'Top banner',
         placement: SponsoredAdPlacement.HOME_TOP,
+        placements: [SponsoredAdPlacement.HOME_TOP],
         startsAt: new Date('2026-06-01T00:00:00.000Z'),
         endsAt: new Date('2026-07-01T00:00:00.000Z'),
       }),
+    });
+  });
+
+  it('creates ads with multiple placements and normalizes WhatsApp phone destinations', async () => {
+    sponsoredAdCreate.mockResolvedValue({
+      id: 'ad-1',
+      placement: SponsoredAdPlacement.HOME_TOP,
+      placements: [
+        SponsoredAdPlacement.HOME_TOP,
+        SponsoredAdPlacement.LEADERBOARD,
+      ],
+      destinationType: SponsoredAdDestinationType.WHATSAPP,
+      destinationValue: '08012345678',
+      targetUrl: 'https://wa.me/2348012345678',
+      whatsappUrl: 'https://wa.me/2348012345678',
+      clicks: 0,
+      impressions: 0,
+      sortOrder: 1,
+    });
+
+    const result = await service.create({
+      title: 'Multi banner',
+      productName: 'Novo Pay',
+      description: 'Sponsored product',
+      placements: [
+        SponsoredAdPlacement.HOME_TOP,
+        SponsoredAdPlacement.LEADERBOARD,
+      ],
+      destinationType: SponsoredAdDestinationType.WHATSAPP,
+      destinationValue: '08012345678',
+      sortOrder: 1,
+    });
+
+    expect(sponsoredAdCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        placement: SponsoredAdPlacement.HOME_TOP,
+        placements: [
+          SponsoredAdPlacement.HOME_TOP,
+          SponsoredAdPlacement.LEADERBOARD,
+        ],
+        destinationType: SponsoredAdDestinationType.WHATSAPP,
+        destinationValue: '08012345678',
+        targetUrl: 'https://wa.me/2348012345678',
+        whatsappUrl: 'https://wa.me/2348012345678',
+      }),
+    });
+    expect(result).toMatchObject({
+      ctr: 0,
+      displayPriority: 1,
     });
   });
 
@@ -68,7 +126,10 @@ describe('AdsService', () => {
     expect(sponsoredAdFindMany).toHaveBeenCalledWith({
       where: {
         status: SponsoredAdStatus.ACTIVE,
-        placement: SponsoredAdPlacement.LEADERBOARD,
+        OR: [
+          { placement: SponsoredAdPlacement.LEADERBOARD },
+          { placements: { has: SponsoredAdPlacement.LEADERBOARD } },
+        ],
         AND: [
           { OR: [{ startsAt: null }, { startsAt: { lte: expect.any(Date) } }] },
           { OR: [{ endsAt: null }, { endsAt: { gte: expect.any(Date) } }] },
@@ -79,11 +140,40 @@ describe('AdsService', () => {
   });
 
   it('increments clicks and impressions', async () => {
-    sponsoredAdFindUnique.mockResolvedValue({ id: 'ad-1' });
-    sponsoredAdUpdate.mockResolvedValue({ id: 'ad-1' });
+    sponsoredAdFindUnique.mockResolvedValue({
+      id: 'ad-1',
+      placement: SponsoredAdPlacement.HOME_TOP,
+      placements: [SponsoredAdPlacement.HOME_TOP],
+      clicks: 1,
+      impressions: 2,
+      sortOrder: 0,
+    });
+    sponsoredAdUpdate
+      .mockResolvedValueOnce({
+        id: 'ad-1',
+        placement: SponsoredAdPlacement.HOME_TOP,
+        placements: [SponsoredAdPlacement.HOME_TOP],
+        clicks: 2,
+        impressions: 2,
+        sortOrder: 0,
+      })
+      .mockResolvedValueOnce({
+        id: 'ad-1',
+        placement: SponsoredAdPlacement.HOME_TOP,
+        placements: [SponsoredAdPlacement.HOME_TOP],
+        clicks: 2,
+        impressions: 3,
+        sortOrder: 0,
+      });
 
-    await service.trackClick('ad-1');
-    await service.trackImpression('ad-1');
+    await expect(service.trackClick('ad-1')).resolves.toMatchObject({
+      clicks: 2,
+      ctr: 100,
+    });
+    await expect(service.trackImpression('ad-1')).resolves.toMatchObject({
+      impressions: 3,
+      ctr: 66.67,
+    });
 
     expect(sponsoredAdUpdate).toHaveBeenNthCalledWith(1, {
       where: { id: 'ad-1' },

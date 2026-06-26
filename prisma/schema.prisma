@@ -100,6 +100,16 @@ enum SponsoredAdStatus {
   EXPIRED
 }
 
+enum SponsoredAdDestinationType {
+  WEBSITE
+  WHATSAPP
+  FACEBOOK
+  INSTAGRAM
+  TIKTOK
+  YOUTUBE
+  OTHER
+}
+
 enum ManualVotePaymentStatus {
   PENDING
   APPROVED
@@ -476,6 +486,10 @@ model SponsoredAd {
   whatsappUrl   String?
   socialUrl     String?
   placement     SponsoredAdPlacement
+  placements    SponsoredAdPlacement[]     @default([])
+  destinationType SponsoredAdDestinationType @default(WEBSITE)
+  destinationValue String?
+  buttonText    String?
   status        SponsoredAdStatus    @default(DRAFT)
   startsAt      DateTime?
   endsAt        DateTime?

@@ -1,12 +1,19 @@
-import { SponsoredAdPlacement, SponsoredAdStatus } from '@prisma/client';
 import {
+  SponsoredAdDestinationType,
+  SponsoredAdPlacement,
+  SponsoredAdStatus,
+} from '@prisma/client';
+import {
+  ArrayNotEmpty,
   IsDateString,
   IsEnum,
   IsInt,
   IsOptional,
+  IsArray,
   IsString,
   IsUrl,
   Min,
+  ValidateIf,
 } from 'class-validator';
 
 export class CreateSponsoredAdDto {
@@ -43,8 +50,34 @@ export class CreateSponsoredAdDto {
   @IsOptional()
   socialUrl?: string;
 
-  @IsEnum(SponsoredAdPlacement)
-  placement!: SponsoredAdPlacement;
+  @ValidateIf((dto: CreateSponsoredAdDto) => !dto.placements?.length)
+  @IsEnum(SponsoredAdPlacement, {
+    message:
+      'placement must be one of HOME_TOP, HOME_MIDDLE, LEADERBOARD, COMPETITION_PAGE, CONTESTANT_PAGE',
+  })
+  placement?: SponsoredAdPlacement;
+
+  @IsEnum(SponsoredAdPlacement, {
+    each: true,
+    message:
+      'each placement must be one of HOME_TOP, HOME_MIDDLE, LEADERBOARD, COMPETITION_PAGE, CONTESTANT_PAGE',
+  })
+  @IsArray()
+  @ArrayNotEmpty({ message: 'placements must contain at least one location' })
+  @IsOptional()
+  placements?: SponsoredAdPlacement[];
+
+  @IsEnum(SponsoredAdDestinationType)
+  @IsOptional()
+  destinationType?: SponsoredAdDestinationType;
+
+  @IsString()
+  @IsOptional()
+  destinationValue?: string;
+
+  @IsString()
+  @IsOptional()
+  buttonText?: string;
 
   @IsEnum(SponsoredAdStatus)
   @IsOptional()

@@ -680,7 +680,7 @@ The old wallet/coin voting code remains in place for future use, but public manu
 
 ## Sponsored Ads Management
 
-Admins can manage website ads from the dashboard. Ads are stored as `SponsoredAd` records with optional image/video creative URLs, optional `targetUrl`, `whatsappUrl`, and `socialUrl`, placement, status, date window, ordering, clicks, and impressions.
+Admins can manage website ads from the dashboard. Ads are stored as `SponsoredAd` records with optional image/video creative URLs, one or more placements, destination metadata, status, date window, display priority, clicks, impressions, and calculated CTR.
 
 Public ad endpoints:
 
@@ -690,7 +690,7 @@ POST /api/ads/:id/click
 POST /api/ads/:id/impression
 ```
 
-`GET /api/ads` returns only `ACTIVE` ads whose `startsAt` and `endsAt` window includes the current time. Results are ordered by `sortOrder` ascending, then newest first. Valid placements are `HOME_TOP`, `HOME_MIDDLE`, `LEADERBOARD`, `COMPETITION_PAGE`, and `CONTESTANT_PAGE`.
+`GET /api/ads` returns only `ACTIVE` ads whose `startsAt` and `endsAt` window includes the current time. If `placement` is supplied, ads match when that location is in `placements` or the legacy `placement` field. Results are ordered by `sortOrder` ascending, then newest first. In admin UI, label `sortOrder` as **Display Priority**; lower numbers appear first. Valid placements are `HOME_TOP`, `HOME_MIDDLE`, `LEADERBOARD`, `COMPETITION_PAGE`, and `CONTESTANT_PAGE`.
 
 Admin ad endpoints require `ADMIN` or `SUPER_ADMIN`:
 
@@ -710,10 +710,10 @@ Content-Type: application/json
   "imageUrl": "https://res.cloudinary.com/cloud/image/upload/novorivera/ad.jpg",
   "videoUrl": "https://res.cloudinary.com/cloud/video/upload/novorivera/ad.mp4",
   "videoPublicId": "novorivera/ad",
-  "targetUrl": "https://example.com/product",
-  "whatsappUrl": "https://wa.me/2348000000000",
-  "socialUrl": "https://instagram.com/novoriviera",
-  "placement": "LEADERBOARD",
+  "placements": ["HOME_TOP", "LEADERBOARD"],
+  "destinationType": "WHATSAPP",
+  "destinationValue": "08012345678",
+  "buttonText": "Chat on WhatsApp",
   "status": "ACTIVE",
   "startsAt": "2026-07-01T00:00:00.000Z",
   "endsAt": "2026-08-01T00:00:00.000Z",
@@ -721,7 +721,11 @@ Content-Type: application/json
 }
 ```
 
-Use existing upload routes for ad creative assets: `/api/uploads/image` for images and `/api/uploads/video` for videos. Ad videos use the same video endpoint and default to the 50 MB upload limit. Frontend ad clicks should open the first configured destination in this order: `targetUrl`, `whatsappUrl`, then `socialUrl`.
+`placements` is preferred. The legacy single `placement` field is still accepted for backward compatibility. Destination types are `WEBSITE`, `WHATSAPP`, `FACEBOOK`, `INSTAGRAM`, `TIKTOK`, `YOUTUBE`, and `OTHER`. If `destinationType` is `WHATSAPP` and `destinationValue` is a phone number, the backend normalizes Nigerian local numbers such as `08012345678` to `https://wa.me/2348012345678`. If `destinationValue` is already an HTTP URL, it is preserved. `targetUrl` is resolved from the destination where practical, while legacy `targetUrl`, `whatsappUrl`, and `socialUrl` are still accepted.
+
+Admin ad responses include `placements`, `destinationType`, `destinationValue`, resolved `targetUrl`, `impressions`, `clicks`, `ctr`, `sortOrder`, and `displayPriority`. `ctr` is `clicks / impressions * 100`, or `0` when impressions is `0`.
+
+Use existing upload routes for ad creative assets: `/api/uploads/image` for images and `/api/uploads/video` for videos. Ad videos use the same video endpoint and default to the 50 MB upload limit. Frontend ad clicks should open the resolved `targetUrl`.
 
 Ads must be rendered in page slots only and should not interrupt voting or submission flows. Admin ad create/update/delete operations write `AdminAuditLog` entries with `SPONSORED_AD_CREATE`, `SPONSORED_AD_UPDATE`, and `SPONSORED_AD_DELETE`.
 

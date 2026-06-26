@@ -60,6 +60,7 @@ type WinnerPlacement = "FIRST" | "SECOND" | "THIRD";
 type LeaderboardMode = "votes" | "engagement" | "combined";
 type SponsoredAdPlacement = "HOME_TOP" | "HOME_MIDDLE" | "LEADERBOARD" | "COMPETITION_PAGE" | "CONTESTANT_PAGE";
 type SponsoredAdStatus = "DRAFT" | "ACTIVE" | "PAUSED" | "EXPIRED";
+type SponsoredAdDestinationType = "WEBSITE" | "WHATSAPP" | "FACEBOOK" | "INSTAGRAM" | "TIKTOK" | "YOUTUBE" | "OTHER";
 type ManualVotePaymentStatus = "PENDING" | "APPROVED" | "REJECTED";
 ```
 
@@ -375,12 +376,18 @@ export interface SponsoredAd {
   whatsappUrl: string | null;
   socialUrl: string | null;
   placement: SponsoredAdPlacement;
+  placements: SponsoredAdPlacement[];
+  destinationType: SponsoredAdDestinationType;
+  destinationValue: string | null;
+  buttonText: string | null;
   status: SponsoredAdStatus;
   startsAt: string | null;
   endsAt: string | null;
   sortOrder: number;
   clicks: number;
   impressions: number;
+  ctr: number;
+  displayPriority: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -878,7 +885,7 @@ Public competition detail exposes bank/payment fields only when `manualVotingEna
 
 ### Sponsored Ads
 
-Public ad reads only return `ACTIVE` ads whose date window is currently valid. Ads are ordered by `sortOrder` ascending, then newest first. The frontend should render ads in non-blocking slots and should never place an ad modal or forced interstitial inside voting or submission flows.
+Public ad reads only return `ACTIVE` ads whose date window is currently valid. Ads are ordered by `sortOrder` ascending, then newest first. In admin UI, label `sortOrder` as **Display Priority**; lower numbers appear first. The frontend should render ads in non-blocking slots and should never place an ad modal or forced interstitial inside voting or submission flows.
 
 | Method | Path | Auth | Roles |
 | --- | --- | --- | --- |
@@ -901,16 +908,18 @@ Create body:
   "imageUrl": "https://res.cloudinary.com/cloud/image/upload/novorivera/ad.jpg",
   "videoUrl": "https://res.cloudinary.com/cloud/video/upload/novorivera/ad.mp4",
   "videoPublicId": "novorivera/ad",
-  "targetUrl": "https://example.com/product",
-  "whatsappUrl": "https://wa.me/2348000000000",
-  "socialUrl": "https://instagram.com/novoriviera",
-  "placement": "LEADERBOARD",
+  "placements": ["HOME_TOP", "LEADERBOARD"],
+  "destinationType": "WHATSAPP",
+  "destinationValue": "08012345678",
+  "buttonText": "Chat on WhatsApp",
   "status": "ACTIVE",
   "startsAt": "2026-07-01T00:00:00.000Z",
   "endsAt": "2026-08-01T00:00:00.000Z",
   "sortOrder": 1
 }
 ```
+
+`placements` is preferred and must contain at least one location. The legacy single `placement` field is still accepted. Destination types are `WEBSITE`, `WHATSAPP`, `FACEBOOK`, `INSTAGRAM`, `TIKTOK`, `YOUTUBE`, and `OTHER`. If `destinationType` is `WHATSAPP` and `destinationValue` is a phone number, the backend normalizes Nigerian local numbers such as `08012345678` to `https://wa.me/2348012345678`. If `destinationValue` is already an HTTP URL, it is preserved. `targetUrl` is generated/resolved where practical; legacy `targetUrl`, `whatsappUrl`, and `socialUrl` remain compatible.
 
 `PATCH /api/admin/ads/:id` accepts any subset of the create fields. Nullable media/link/window fields can be sent as `null` to clear them.
 
@@ -926,23 +935,31 @@ Public response:
     "imageUrl": "https://res.cloudinary.com/cloud/image/upload/novorivera/ad.jpg",
     "videoUrl": "https://res.cloudinary.com/cloud/video/upload/novorivera/ad.mp4",
     "videoPublicId": "novorivera/ad",
-    "targetUrl": "https://example.com/product",
-    "whatsappUrl": "https://wa.me/2348000000000",
-    "socialUrl": "https://instagram.com/novoriviera",
+    "targetUrl": "https://wa.me/2348012345678",
+    "whatsappUrl": "https://wa.me/2348012345678",
+    "socialUrl": null,
     "placement": "LEADERBOARD",
+    "placements": ["HOME_TOP", "LEADERBOARD"],
+    "destinationType": "WHATSAPP",
+    "destinationValue": "08012345678",
+    "buttonText": "Chat on WhatsApp",
     "status": "ACTIVE",
     "startsAt": "2026-07-01T00:00:00.000Z",
     "endsAt": "2026-08-01T00:00:00.000Z",
     "sortOrder": 1,
     "clicks": 0,
     "impressions": 0,
+    "ctr": 0,
+    "displayPriority": 1,
     "createdAt": "2026-06-26T00:00:00.000Z",
     "updatedAt": "2026-06-26T00:00:00.000Z"
   }
 ]
 ```
 
-For navigation, prefer the first configured destination in this order: `targetUrl`, `whatsappUrl`, `socialUrl`. Call the click endpoint before or while opening the selected destination. Call the impression endpoint when an ad slot becomes visible enough to count as viewed.
+For navigation, use the resolved `targetUrl`. Call the click endpoint before or while opening the selected destination. Call the impression endpoint when an ad slot becomes visible enough to count as viewed. `POST /api/ads/:id/click` and `POST /api/ads/:id/impression` are public and do not require auth.
+
+Analytics: all admin ad responses include `impressions`, `clicks`, and `ctr`, where `ctr = clicks / impressions * 100`. If impressions is `0`, `ctr` is `0`.
 
 Admins upload ad images with `/api/uploads/image` and ad videos with `/api/uploads/video`, then save `secureUrl` as `imageUrl` or `videoUrl` and `publicId` as `videoPublicId` where relevant. Ad video uploads use the existing video upload endpoint and the 50 MB default max.
 
@@ -1751,9 +1768,17 @@ Create/update body:
   "prizeFirst": "First prize",
   "prizeSecond": "Second prize",
   "prizeThird": "Third prize",
-  "rules": "Competition rules"
+  "rules": "Competition rules",
+  "manualVotingEnabled": true,
+  "votePriceNaira": 500,
+  "paymentBankName": "Novo Bank",
+  "paymentAccountName": "NovoRivera Votes",
+  "paymentAccountNumber": "1234567890",
+  "paymentInstructions": "Transfer and include contestant code."
 }
 ```
+
+The manual voting fields above are set per competition through this same create/update endpoint. When `manualVotingEnabled` is `true`, public competition detail and `GET /api/contestants/code/:contestantCode/vote-info` expose the vote price, bank name, account name, account number, and payment instructions for that competition. When `manualVotingEnabled` is `false`, public competition detail hides the payment fields and vote-info returns `404`.
 
 Success: `Competition`.
 
