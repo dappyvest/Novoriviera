@@ -1817,6 +1817,63 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
     });
   });
 
+  it('uploads public payment proof images without authentication', async () => {
+    cloudinaryUploadStreamMock.mockImplementationOnce(
+      (
+        _options: unknown,
+        callback: (error: undefined, result: Record<string, unknown>) => void,
+      ) =>
+        new Writable({
+          write(_chunk, _encoding, done) {
+            done();
+          },
+          final(done) {
+            callback(undefined, {
+              secure_url:
+                'https://res.cloudinary.com/test/image/upload/payment-proof.jpg',
+              public_id: 'novoriviera/payment-proofs/payment-proof',
+              resource_type: 'image',
+              format: 'jpg',
+              bytes: 512,
+            });
+            done();
+          },
+        }),
+    );
+
+    const uploadResponse = await request(app.getHttpServer())
+      .post('/api/uploads/payment-proof')
+      .attach('file', Buffer.from('fake-proof'), {
+        filename: 'payment-proof.jpg',
+        contentType: 'image/jpeg',
+      })
+      .expect(201);
+
+    expect(uploadResponse.body).toEqual({
+      secureUrl:
+        'https://res.cloudinary.com/test/image/upload/payment-proof.jpg',
+      publicId: 'novoriviera/payment-proofs/payment-proof',
+      resourceType: 'image',
+      format: 'jpg',
+      bytes: 512,
+    });
+    expect(cloudinaryUploadStreamMock).toHaveBeenCalledWith(
+      {
+        folder: 'novoriviera/payment-proofs',
+        resource_type: 'image',
+      },
+      expect.any(Function),
+    );
+
+    await request(app.getHttpServer())
+      .post('/api/uploads/payment-proof')
+      .attach('file', Buffer.from('not-supported'), {
+        filename: 'proof.gif',
+        contentType: 'image/gif',
+      })
+      .expect(400);
+  });
+
   it('runs the competition, contestant, submission, and leaderboard flow', async () => {
     const adminAuth = await registerUser('admin@example.com');
     users[0].role = UserRole.SUPER_ADMIN;

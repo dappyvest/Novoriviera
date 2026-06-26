@@ -718,6 +718,7 @@ Cloudinary credentials are backend-only. Do not store or use `CLOUDINARY_API_SEC
 | --- | --- | --- | --- |
 | `POST` | `/api/uploads/video` | Required | Any active user |
 | `POST` | `/api/uploads/image` | Required | Any active user |
+| `POST` | `/api/uploads/payment-proof` | Public | None |
 
 Request:
 
@@ -726,6 +727,9 @@ Request:
 - Video route accepts MP4, MOV, WebM, AVI, MKV, and 3GP.
 - Image route accepts `image/*` only.
 - Max video upload size is configured by `MAX_VIDEO_UPLOAD_SIZE_MB`, default `50` MB.
+- Payment proof route accepts only JPG, JPEG, PNG, and WebP images.
+- Payment proof max size is configured by `MAX_PAYMENT_PROOF_UPLOAD_SIZE_MB`, default `5` MB.
+- Payment proofs upload to the fixed Cloudinary folder `novoriviera/payment-proofs`.
 
 Success:
 
@@ -742,7 +746,9 @@ Success:
 
 Use the image response `secureUrl` and `publicId` with the contestant photo update endpoint. Cloudinary API credentials and signatures are never returned.
 
-Common errors: `400` missing file or unsupported format, `401`, `413` file too large, `502` Cloudinary upload failure, `503` Cloudinary not configured. All application errors are JSON responses.
+Use `POST /api/uploads/payment-proof` before `POST /api/public-votes` when the voter chooses a proof image. Send the returned `secureUrl` as `proofImageUrl`. This endpoint is intentionally public because voters do not register or log in.
+
+Common errors: `400` missing file or unsupported/invalid payment proof format, `401` for auth-required upload routes, `413` file too large, `502` Cloudinary upload failure, `503` Cloudinary not configured. All application errors are JSON responses.
 
 ### Manual Public Voting
 
@@ -804,6 +810,29 @@ Success:
   "note": "Optional note"
 }
 ```
+
+Optional proof upload:
+
+```http
+POST /api/uploads/payment-proof
+Content-Type: multipart/form-data
+
+file=<jpg|jpeg|png|webp image>
+```
+
+Success:
+
+```json
+{
+  "secureUrl": "https://res.cloudinary.com/cloud/image/upload/novoriviera/payment-proofs/proof.jpg",
+  "publicId": "novoriviera/payment-proofs/proof",
+  "resourceType": "image",
+  "format": "jpg",
+  "bytes": 512000
+}
+```
+
+Send `secureUrl` as `proofImageUrl` in `POST /api/public-votes`. Do not expose Cloudinary credentials in the frontend.
 
 Rules:
 

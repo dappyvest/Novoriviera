@@ -33,8 +33,19 @@ const maxUploadSizeMb = Number(process.env.MAX_UPLOAD_SIZE_MB ?? 100);
 const maxVideoUploadSizeMb = Number(
   process.env.MAX_VIDEO_UPLOAD_SIZE_MB ?? 50,
 );
+const maxPaymentProofUploadSizeMb = Number(
+  process.env.MAX_PAYMENT_PROOF_UPLOAD_SIZE_MB ?? 5,
+);
 const maxUploadSizeBytes = maxUploadSizeMb * 1024 * 1024;
 const maxVideoUploadSizeBytes = maxVideoUploadSizeMb * 1024 * 1024;
+const maxPaymentProofUploadSizeBytes =
+  maxPaymentProofUploadSizeMb * 1024 * 1024;
+const paymentProofMimeTypes = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]);
+const paymentProofExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 
 @Injectable()
 export class VideoUploadLoggingInterceptor implements NestInterceptor {
@@ -67,6 +78,29 @@ export class VideoUploadLoggingInterceptor implements NestInterceptor {
         this.logger.error(
           `Upload request failed: ${error instanceof Error ? error.message : String(error)}`,
         );
+        return throwError(() => error);
+      }),
+    );
+  }
+}
+
+@Injectable()
+export class PaymentProofUploadInterceptor implements NestInterceptor {
+  intercept(_context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    return next.handle().pipe(
+      catchError((error: unknown) => {
+        const multerCode = (error as { code?: string })?.code;
+        const status = (error as { getStatus?: () => number })?.getStatus?.();
+
+        if (multerCode === 'LIMIT_FILE_SIZE' || status === 413) {
+          return throwError(
+            () =>
+              new PayloadTooLargeException(
+                `Payment proof image exceeds the ${maxPaymentProofUploadSizeMb} MB limit`,
+              ),
+          );
+        }
+
         return throwError(() => error);
       }),
     );
@@ -116,5 +150,40 @@ export class UploadsController {
       throw new BadRequestException('Invalid image upload');
     }
     return this.uploadsService.upload(file, 'image');
+  }
+
+  @Post('payment-proof')
+  @UseInterceptors(
+    PaymentProofUploadInterceptor,
+    FileInterceptor('file', {
+      limits: { fileSize: maxPaymentProofUploadSizeBytes, files: 1 },
+      fileFilter: (_request, file, callback) => {
+        const extension = extname(file.originalname).toLowerCase();
+        const isValid =
+          paymentProofMimeTypes.has(file.mimetype) &&
+          paymentProofExtensions.has(extension);
+
+        if (!isValid) {
+          callback(
+            new BadRequestException(
+              'Invalid payment proof file type. Upload a JPG, JPEG, PNG, or WebP image',
+            ),
+            false,
+          );
+          return;
+        }
+
+        callback(null, true);
+      },
+    }),
+  )
+  uploadPaymentProof(
+    @UploadedFile() file: UploadedMultipartFile | undefined,
+  ) {
+    if (file && !file.buffer) {
+      throw new BadRequestException('Invalid payment proof upload');
+    }
+
+    return this.uploadsService.uploadPaymentProof(file);
   }
 }

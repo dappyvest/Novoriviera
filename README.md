@@ -646,6 +646,17 @@ Content-Type: application/json
 }
 ```
 
+For the upload button, voters can upload proof images before submitting the vote payment:
+
+```http
+POST /api/uploads/payment-proof
+Content-Type: multipart/form-data
+
+file=<jpg|jpeg|png|webp image>
+```
+
+This public endpoint requires no auth, accepts JPG, JPEG, PNG, and WebP images only, defaults to a 5 MB limit, uploads to Cloudinary under `novoriviera/payment-proofs`, and returns `secureUrl`, `publicId`, `resourceType`, `format`, and `bytes`. Use the returned `secureUrl` as `proofImageUrl` in `POST /api/public-votes`. Cloudinary secrets stay backend-only.
+
 The API validates the contestant code, competition match, contestant eligibility, manual voting status, and minimum amount. It stores a `PENDING` manual vote payment and calculates `votesCalculated = floor(amountPaid / votePriceNaira)`. Contestant `totalVotes` is not incremented until admin approval.
 
 Admin manual vote review endpoints require `ADMIN` or `SUPER_ADMIN`:
@@ -727,6 +738,7 @@ CLOUDINARY_API_SECRET="replace-with-api-secret"
 CLOUDINARY_UPLOAD_FOLDER="novorivera"
 MAX_UPLOAD_SIZE_MB=100
 MAX_VIDEO_UPLOAD_SIZE_MB=50
+MAX_PAYMENT_PROOF_UPLOAD_SIZE_MB=5
 ```
 
 Do not expose `CLOUDINARY_API_SECRET` to the frontend.
@@ -752,6 +764,17 @@ Content-Type: multipart/form-data
 
 file=<image file>
 ```
+
+Public payment proof image uploads:
+
+```http
+POST /api/uploads/payment-proof
+Content-Type: multipart/form-data
+
+file=<jpg|jpeg|png|webp image>
+```
+
+Payment proof uploads are public so unregistered voters can submit transfer receipts. They accept only JPG, JPEG, PNG, and WebP images, default to `MAX_PAYMENT_PROOF_UPLOAD_SIZE_MB=5`, and upload to the fixed Cloudinary folder `novoriviera/payment-proofs`.
 
 Upload response:
 

@@ -115,4 +115,91 @@ describe('UploadsService', () => {
       message: 'Video upload service failed. Please try again',
     });
   });
+
+  it('uploads payment proofs to the fixed Cloudinary folder', async () => {
+    uploadStreamMock.mockImplementation(
+      (
+        _options: unknown,
+        callback: (error: undefined, result: Record<string, unknown>) => void,
+      ) =>
+        new Writable({
+          write(_chunk, _encoding, done) {
+            done();
+          },
+          final(done) {
+            callback(undefined, {
+              secure_url: 'https://res.cloudinary.com/test/proof.jpg',
+              public_id: 'novoriviera/payment-proofs/proof',
+              resource_type: 'image',
+              format: 'jpg',
+              bytes: 42,
+            });
+            done();
+          },
+        }),
+    );
+
+    const result = await service.uploadPaymentProof({
+      buffer: Buffer.from('proof-bytes'),
+      mimetype: 'image/jpeg',
+      originalname: 'proof.jpg',
+      size: 11,
+    });
+
+    expect(uploadStreamMock).toHaveBeenCalledWith(
+      {
+        folder: 'novoriviera/payment-proofs',
+        resource_type: 'image',
+      },
+      expect.any(Function),
+    );
+    expect(result).toEqual({
+      secureUrl: 'https://res.cloudinary.com/test/proof.jpg',
+      publicId: 'novoriviera/payment-proofs/proof',
+      resourceType: 'image',
+      format: 'jpg',
+      bytes: 42,
+    });
+  });
+
+  it('rejects unsupported payment proof formats', async () => {
+    await expect(
+      service.uploadPaymentProof({
+        buffer: Buffer.from('gif-bytes'),
+        mimetype: 'image/gif',
+        originalname: 'proof.gif',
+        size: 9,
+      }),
+    ).rejects.toMatchObject<Partial<BadRequestException>>({
+      message:
+        'Invalid payment proof file type. Upload a JPG, JPEG, PNG, or WebP image',
+    });
+    expect(uploadStreamMock).not.toHaveBeenCalled();
+  });
+
+  it('converts payment proof Cloudinary failures to a friendly 502', async () => {
+    uploadStreamMock.mockImplementation(
+      (_options: unknown, callback: (error: Error) => void) =>
+        new Writable({
+          write(_chunk, _encoding, done) {
+            done();
+          },
+          final(done) {
+            callback(new Error('cloudinary unavailable'));
+            done();
+          },
+        }),
+    );
+
+    await expect(
+      service.uploadPaymentProof({
+        buffer: Buffer.from('proof-bytes'),
+        mimetype: 'image/png',
+        originalname: 'proof.png',
+        size: 11,
+      }),
+    ).rejects.toMatchObject<Partial<BadGatewayException>>({
+      message: 'Payment proof upload service failed. Please try again',
+    });
+  });
 });
