@@ -91,6 +91,7 @@ enum SponsoredAdPlacement {
   LEADERBOARD
   COMPETITION_PAGE
   CONTESTANT_PAGE
+  VOTE_PAGE
 }
 
 enum SponsoredAdStatus {

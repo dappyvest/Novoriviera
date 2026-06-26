@@ -76,6 +76,7 @@ describe('AdsService', () => {
       placements: [
         SponsoredAdPlacement.HOME_TOP,
         SponsoredAdPlacement.LEADERBOARD,
+        SponsoredAdPlacement.VOTE_PAGE,
       ],
       destinationType: SponsoredAdDestinationType.WHATSAPP,
       destinationValue: '08012345678',
@@ -93,6 +94,7 @@ describe('AdsService', () => {
       placements: [
         SponsoredAdPlacement.HOME_TOP,
         SponsoredAdPlacement.LEADERBOARD,
+        SponsoredAdPlacement.VOTE_PAGE,
       ],
       destinationType: SponsoredAdDestinationType.WHATSAPP,
       destinationValue: '08012345678',
@@ -105,6 +107,7 @@ describe('AdsService', () => {
         placements: [
           SponsoredAdPlacement.HOME_TOP,
           SponsoredAdPlacement.LEADERBOARD,
+          SponsoredAdPlacement.VOTE_PAGE,
         ],
         destinationType: SponsoredAdDestinationType.WHATSAPP,
         destinationValue: '08012345678',
@@ -121,14 +124,14 @@ describe('AdsService', () => {
   it('returns only active ads inside the public date window', async () => {
     sponsoredAdFindMany.mockResolvedValue([]);
 
-    await service.findPublic(SponsoredAdPlacement.LEADERBOARD);
+    await service.findPublic(SponsoredAdPlacement.VOTE_PAGE);
 
     expect(sponsoredAdFindMany).toHaveBeenCalledWith({
       where: {
         status: SponsoredAdStatus.ACTIVE,
         OR: [
-          { placement: SponsoredAdPlacement.LEADERBOARD },
-          { placements: { has: SponsoredAdPlacement.LEADERBOARD } },
+          { placement: SponsoredAdPlacement.VOTE_PAGE },
+          { placements: { has: SponsoredAdPlacement.VOTE_PAGE } },
         ],
         AND: [
           { OR: [{ startsAt: null }, { startsAt: { lte: expect.any(Date) } }] },

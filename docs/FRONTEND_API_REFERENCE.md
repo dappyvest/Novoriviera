@@ -58,7 +58,7 @@ type ContactMessageStatus = "NEW" | "READ" | "RESOLVED";
 type EngagementPlatform = "TIKTOK" | "FACEBOOK" | "YOUTUBE" | "INSTAGRAM" | "OTHER";
 type WinnerPlacement = "FIRST" | "SECOND" | "THIRD";
 type LeaderboardMode = "votes" | "engagement" | "combined";
-type SponsoredAdPlacement = "HOME_TOP" | "HOME_MIDDLE" | "LEADERBOARD" | "COMPETITION_PAGE" | "CONTESTANT_PAGE";
+type SponsoredAdPlacement = "HOME_TOP" | "HOME_MIDDLE" | "LEADERBOARD" | "COMPETITION_PAGE" | "CONTESTANT_PAGE" | "VOTE_PAGE";
 type SponsoredAdStatus = "DRAFT" | "ACTIVE" | "PAUSED" | "EXPIRED";
 type SponsoredAdDestinationType = "WEBSITE" | "WHATSAPP" | "FACEBOOK" | "INSTAGRAM" | "TIKTOK" | "YOUTUBE" | "OTHER";
 type ManualVotePaymentStatus = "PENDING" | "APPROVED" | "REJECTED";
@@ -890,6 +890,7 @@ Public ad reads only return `ACTIVE` ads whose date window is currently valid. A
 | Method | Path | Auth | Roles |
 | --- | --- | --- | --- |
 | `GET` | `/api/ads?placement=HOME_TOP` | Public | None |
+| `GET` | `/api/ads?placement=VOTE_PAGE` | Public | None |
 | `POST` | `/api/ads/:id/click` | Public | None |
 | `POST` | `/api/ads/:id/impression` | Public | None |
 | `POST` | `/api/admin/ads` | Required | `ADMIN`, `SUPER_ADMIN` |
@@ -908,7 +909,7 @@ Create body:
   "imageUrl": "https://res.cloudinary.com/cloud/image/upload/novorivera/ad.jpg",
   "videoUrl": "https://res.cloudinary.com/cloud/video/upload/novorivera/ad.mp4",
   "videoPublicId": "novorivera/ad",
-  "placements": ["HOME_TOP", "LEADERBOARD"],
+  "placements": ["HOME_TOP", "LEADERBOARD", "VOTE_PAGE"],
   "destinationType": "WHATSAPP",
   "destinationValue": "08012345678",
   "buttonText": "Chat on WhatsApp",
@@ -919,7 +920,7 @@ Create body:
 }
 ```
 
-`placements` is preferred and must contain at least one location. The legacy single `placement` field is still accepted. Destination types are `WEBSITE`, `WHATSAPP`, `FACEBOOK`, `INSTAGRAM`, `TIKTOK`, `YOUTUBE`, and `OTHER`. If `destinationType` is `WHATSAPP` and `destinationValue` is a phone number, the backend normalizes Nigerian local numbers such as `08012345678` to `https://wa.me/2348012345678`. If `destinationValue` is already an HTTP URL, it is preserved. `targetUrl` is generated/resolved where practical; legacy `targetUrl`, `whatsappUrl`, and `socialUrl` remain compatible.
+`placements` is preferred and must contain at least one location. Valid values are `HOME_TOP`, `HOME_MIDDLE`, `LEADERBOARD`, `COMPETITION_PAGE`, `CONTESTANT_PAGE`, and `VOTE_PAGE`. The legacy single `placement` field is still accepted. Destination types are `WEBSITE`, `WHATSAPP`, `FACEBOOK`, `INSTAGRAM`, `TIKTOK`, `YOUTUBE`, and `OTHER`. If `destinationType` is `WHATSAPP` and `destinationValue` is a phone number, the backend normalizes Nigerian local numbers such as `08012345678` to `https://wa.me/2348012345678`. If `destinationValue` is already an HTTP URL, it is preserved. `targetUrl` is generated/resolved where practical; legacy `targetUrl`, `whatsappUrl`, and `socialUrl` remain compatible.
 
 `PATCH /api/admin/ads/:id` accepts any subset of the create fields. Nullable media/link/window fields can be sent as `null` to clear them.
 
@@ -939,7 +940,7 @@ Public response:
     "whatsappUrl": "https://wa.me/2348012345678",
     "socialUrl": null,
     "placement": "LEADERBOARD",
-    "placements": ["HOME_TOP", "LEADERBOARD"],
+    "placements": ["HOME_TOP", "LEADERBOARD", "VOTE_PAGE"],
     "destinationType": "WHATSAPP",
     "destinationValue": "08012345678",
     "buttonText": "Chat on WhatsApp",

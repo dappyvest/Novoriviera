@@ -690,7 +690,7 @@ POST /api/ads/:id/click
 POST /api/ads/:id/impression
 ```
 
-`GET /api/ads` returns only `ACTIVE` ads whose `startsAt` and `endsAt` window includes the current time. If `placement` is supplied, ads match when that location is in `placements` or the legacy `placement` field. Results are ordered by `sortOrder` ascending, then newest first. In admin UI, label `sortOrder` as **Display Priority**; lower numbers appear first. Valid placements are `HOME_TOP`, `HOME_MIDDLE`, `LEADERBOARD`, `COMPETITION_PAGE`, and `CONTESTANT_PAGE`.
+`GET /api/ads` returns only `ACTIVE` ads whose `startsAt` and `endsAt` window includes the current time. If `placement` is supplied, ads match when that location is in `placements` or the legacy `placement` field. Results are ordered by `sortOrder` ascending, then newest first. In admin UI, label `sortOrder` as **Display Priority**; lower numbers appear first. Valid placements are `HOME_TOP`, `HOME_MIDDLE`, `LEADERBOARD`, `COMPETITION_PAGE`, `CONTESTANT_PAGE`, and `VOTE_PAGE`.
 
 Admin ad endpoints require `ADMIN` or `SUPER_ADMIN`:
 
@@ -710,7 +710,7 @@ Content-Type: application/json
   "imageUrl": "https://res.cloudinary.com/cloud/image/upload/novorivera/ad.jpg",
   "videoUrl": "https://res.cloudinary.com/cloud/video/upload/novorivera/ad.mp4",
   "videoPublicId": "novorivera/ad",
-  "placements": ["HOME_TOP", "LEADERBOARD"],
+  "placements": ["HOME_TOP", "LEADERBOARD", "VOTE_PAGE"],
   "destinationType": "WHATSAPP",
   "destinationValue": "08012345678",
   "buttonText": "Chat on WhatsApp",

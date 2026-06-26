@@ -1603,6 +1603,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         placements: [
           SponsoredAdPlacement.HOME_TOP,
           SponsoredAdPlacement.LEADERBOARD,
+          SponsoredAdPlacement.VOTE_PAGE,
         ],
         destinationType: SponsoredAdDestinationType.WHATSAPP,
         destinationValue: '08000000000',
@@ -1621,6 +1622,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       placements: [
         SponsoredAdPlacement.HOME_TOP,
         SponsoredAdPlacement.LEADERBOARD,
+        SponsoredAdPlacement.VOTE_PAGE,
       ],
       destinationType: SponsoredAdDestinationType.WHATSAPP,
       destinationValue: '08000000000',
@@ -1675,7 +1677,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       .expect(201);
 
     const publicAdsResponse = await request(app.getHttpServer())
-      .get(`/api/ads?placement=${SponsoredAdPlacement.LEADERBOARD}`)
+      .get(`/api/ads?placement=${SponsoredAdPlacement.VOTE_PAGE}`)
       .expect(200);
 
     expect(publicAdsResponse.body).toHaveLength(1);
@@ -1710,6 +1712,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         placements: [
           SponsoredAdPlacement.HOME_TOP,
           SponsoredAdPlacement.LEADERBOARD,
+          SponsoredAdPlacement.VOTE_PAGE,
         ],
         destinationType: SponsoredAdDestinationType.WHATSAPP,
         destinationValue: '08000000000',
