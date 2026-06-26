@@ -99,6 +99,68 @@ export class CompetitionsService {
     return this.prisma.competition.delete({ where: { id } });
   }
 
+  async reset(id: string, actorId: string) {
+    await this.ensureExists(id);
+
+    return this.prisma.$transaction(async (tx) => {
+      const contestants = await tx.contestant.findMany({
+        where: { competitionId: id },
+        select: { id: true },
+      });
+      const contestantIds = contestants.map((contestant) => contestant.id);
+
+      const submissions = await tx.submission.updateMany({
+        where: {
+          contestant: { competitionId: id },
+        },
+        data: { status: SubmissionStatus.REJECTED },
+      });
+
+      const updatedContestants =
+        contestantIds.length > 0
+          ? await tx.contestant.updateMany({
+              where: { id: { in: contestantIds } },
+              data: {
+                status: ContestantStatus.REJECTED,
+                totalVotes: 0,
+                totalOnlineEngagement: 0,
+                isPremium: false,
+                premiumExpiresAt: null,
+              },
+            })
+          : { count: 0 };
+
+      const winners = await tx.competitionWinner.deleteMany({
+        where: { competitionId: id },
+      });
+
+      await tx.adminAuditLog.create({
+        data: {
+          actorId,
+          action: 'COMPETITION_RESET',
+          entity: 'Competition',
+          entityId: id,
+          metadata: {
+            contestantsArchived: updatedContestants.count,
+            submissionsArchived: submissions.count,
+            winnersCleared: winners.count,
+            manualVotePaymentsPreserved: true,
+            paymentRecordsPreserved: true,
+          },
+        },
+      });
+
+      return {
+        competitionId: id,
+        contestantsArchived: updatedContestants.count,
+        submissionsArchived: submissions.count,
+        winnersCleared: winners.count,
+        manualVotePaymentsPreserved: true,
+        paymentRecordsPreserved: true,
+      };
+    });
+  }
+
   async leaderboard(
     competitionId: string,
     featuredFirst = false,

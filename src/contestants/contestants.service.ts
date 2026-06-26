@@ -287,6 +287,41 @@ export class ContestantsService {
     });
   }
 
+  async removeFromPublic(id: string, actorId: string) {
+    await this.findOne(id);
+
+    return this.prisma.$transaction(async (tx) => {
+      const contestant = await tx.contestant.update({
+        where: { id },
+        data: {
+          status: ContestantStatus.REJECTED,
+          totalVotes: 0,
+          totalOnlineEngagement: 0,
+        },
+      });
+
+      await tx.submission.updateMany({
+        where: { contestantId: id },
+        data: { status: SubmissionStatus.REJECTED },
+      });
+
+      await tx.adminAuditLog.create({
+        data: {
+          actorId,
+          action: 'CONTESTANT_REMOVE',
+          entity: 'Contestant',
+          entityId: id,
+          metadata: {
+            status: ContestantStatus.REJECTED,
+            reason: 'Soft removed from public MVP views',
+          },
+        },
+      });
+
+      return contestant;
+    });
+  }
+
   async updatePremium(id: string, dto: UpdateContestantPremiumDto) {
     await this.findOne(id);
     return this.prisma.contestant.update({

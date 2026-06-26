@@ -504,9 +504,21 @@ Body:
   "name": "Jane Rivera",
   "email": "jane@example.com",
   "phone": "+2348012345678",
-  "password": "password123"
+  "password": "password123",
+  "displayName": "Jane Star",
+  "bio": "Singer",
+  "age": 19,
+  "location": "Lagos",
+  "guardianName": "Parent Name",
+  "guardianPhone": "+2348012345678",
+  "photoUrl": "https://example.com/photo.jpg",
+  "videoUrl": "https://example.com/video.mp4",
+  "uploadUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+  "cloudinarySecureUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4"
 }
 ```
+
+Registration is contestant registration. The backend creates the user as a `CONTESTANT` and automatically creates a contestant profile in the current `ACTIVE` competition, falling back to the newest `PUBLISHED` competition. Voters do not register.
 
 Success:
 
@@ -517,16 +529,31 @@ Success:
     "name": "Jane Rivera",
     "email": "jane@example.com",
     "phone": "+2348012345678",
-    "role": "USER",
+    "role": "CONTESTANT",
     "isActive": true,
     "createdAt": "2026-06-14T00:00:00.000Z",
     "updatedAt": "2026-06-14T00:00:00.000Z"
   },
-  "token": "jwt-token"
+  "token": "jwt-token",
+  "contestant": {
+    "id": "contestant-id",
+    "contestantCode": "NRV-100001",
+    "displayName": "Jane Star",
+    "status": "PENDING",
+    "competitionId": "competition-id"
+  },
+  "submission": {
+    "id": "submission-id",
+    "title": "Jane Star",
+    "videoUrl": "https://example.com/video.mp4",
+    "status": "APPROVED"
+  }
 }
 ```
 
-Common errors: `400` invalid body, `409` email already registered.
+`submission` is `null` when no video fields are submitted or the selected competition has no stage. New contestant profiles are publicly visible immediately unless an admin rejects/removes them.
+
+Common errors: `400` invalid body or no active/default competition (`No active competition is currently open for registration.`), `409` email already registered.
 
 `POST /api/auth/login`
 
@@ -1077,7 +1104,7 @@ Common errors: `401`, `403`, `404`.
 | Method | Path | Auth | Roles |
 | --- | --- | --- | --- |
 | `GET` | `/api/contestants/:id` | Public | None |
-| `POST` | `/api/competitions/:competitionId/contestants` | Required | Any active user |
+| `POST` | `/api/competitions/:competitionId/contestants` | Required | Any active user; legacy/manual join |
 | `GET` | `/api/contestants/me` | Required | Any active user |
 | `GET` | `/api/contestants/me/:competitionId` | Required | Any active user |
 | `PATCH` | `/api/contestants/me/:competitionId/photo` | Required | Contestant owner |
@@ -1162,6 +1189,8 @@ Upload an `image/*` file to `POST /api/uploads/image`, then send its returned va
 Common errors: `400` invalid URL/body, `401`, `404` contestant profile not found for the current user and competition.
 
 `POST /api/competitions/:competitionId/contestants`
+
+This endpoint remains available for existing clients and special admin/manual flows. The MVP frontend should use `POST /api/auth/register`, which creates the contestant profile automatically in the active/default competition.
 
 Body:
 
@@ -1425,6 +1454,8 @@ Success:
 Common errors: none expected.
 
 ### Wallet
+
+Wallet, coin, and Paystack endpoints are legacy/future-use surfaces for the MVP. Registration and public voting do not require a wallet, coins, or Paystack. Voters should use the manual bank transfer flow in `POST /api/public-votes`.
 
 | Method | Path | Auth | Roles |
 | --- | --- | --- | --- |
@@ -1753,6 +1784,7 @@ All routes require admin auth.
 | `POST` | `/api/competitions` |
 | `PATCH` | `/api/competitions/:id` |
 | `DELETE` | `/api/competitions/:id` |
+| `POST` | `/api/admin/competitions/:id/reset` |
 | `POST` | `/api/competitions/:competitionId/declare-winners` |
 
 Create/update body:
@@ -1784,6 +1816,23 @@ The manual voting fields above are set per competition through this same create/
 Success: `Competition`.
 
 Common errors: `400`, `401`, `403`, `404`, `409` duplicate slug.
+
+`POST /api/admin/competitions/:id/reset`
+
+Soft-resets public competition data for a new cycle while preserving financial records. It marks contestants for the competition as rejected/hidden, rejects their submissions, resets public vote and engagement counters, clears declared winners, and writes a `COMPETITION_RESET` audit log. Manual vote payments and Paystack payment records are preserved.
+
+Success:
+
+```json
+{
+  "competitionId": "competition-id",
+  "contestantsArchived": 25,
+  "submissionsArchived": 25,
+  "winnersCleared": 3,
+  "manualVotePaymentsPreserved": true,
+  "paymentRecordsPreserved": true
+}
+```
 
 Declare winners body:
 
@@ -1860,6 +1909,7 @@ All routes require admin auth.
 | `GET` | `/api/admin/contestants/:id` |
 | `PATCH` | `/api/admin/contestants/:id/status` |
 | `PATCH` | `/api/admin/contestants/:id/premium` |
+| `DELETE` | `/api/admin/contestants/:id` |
 | `POST` | `/api/admin/contestants/:contestantId/engagement` |
 
 Status body:
@@ -1878,6 +1928,8 @@ Premium body:
   "premiumExpiresAt": "2026-08-01T00:00:00.000Z"
 }
 ```
+
+`DELETE /api/admin/contestants/:id` soft-removes a contestant from the public website by marking the contestant `REJECTED`, resetting public counters, rejecting submissions, and writing a `CONTESTANT_REMOVE` audit log. It does not delete the linked user account.
 
 Engagement body:
 
@@ -2256,18 +2308,17 @@ Admin-auth routes:
 
 ### Contestant Registration And Submission Flow
 
-1. User registers/logs in.
-2. Frontend loads competition detail from `/api/competitions/:id`.
-3. User submits contestant profile to `/api/competitions/:competitionId/contestants`.
-4. Contestant starts as `PENDING`; the entrant can continue immediately. Admin can approve, reject, or eliminate the contestant later with `/api/admin/contestants/:id/status`.
-5. Optional photo path: upload an image to `/api/uploads/image`, then set `secureUrl`, `publicId`, and optional response metadata through `/api/contestants/me/:competitionId/photo`.
-6. Optional video path: upload video to `/api/uploads/video`, then send `secureUrl` as `videoUrl` and/or `uploadUrl`. Manual URL submission still works.
-7. Registered contestants can submit immediately to open submission stages through `/api/stages/:stageId/submissions`; only `REJECTED` and `ELIMINATED` contestant profiles are blocked.
-8. One submission is allowed per contestant per stage.
-9. Submission starts as `APPROVED`, appears publicly immediately, and appears in the admin dashboard under **Submissions**; admin removes, rejects, or moderates spam, bots, scammers, invalid, or inappropriate entries through admin contestant/submission status tools.
-10. Admin can attach YouTube, TikTok, Facebook, Instagram, external video, and thumbnail links through `/api/admin/submissions/:id/youtube`.
-11. Public stage submissions list visible submissions and exclude only rejected submissions or rejected/eliminated contestants.
-12. TikTok/Facebook/Instagram metrics are entered manually through the admin engagement endpoint; there is no external social API integration yet.
+1. Contestant registers through `/api/auth/register`.
+2. Backend automatically creates the contestant profile in the active/default competition.
+3. Contestant starts as `PENDING` but appears publicly immediately unless admin rejects/removes them.
+4. Optional photo path: upload an image to `/api/uploads/image`, then include `photoUrl` during registration or set it afterward through `/api/contestants/me/:competitionId/photo`.
+5. Optional video path: upload video to `/api/uploads/video`, then include `videoUrl`, `uploadUrl`, or `cloudinarySecureUrl` during registration when practical. If submitted after registration, use `/api/stages/:stageId/submissions`.
+6. Registered contestants can submit immediately to open submission stages; only `REJECTED` and `ELIMINATED` contestant profiles are blocked.
+7. One submission is allowed per contestant per stage.
+8. Submission starts as `APPROVED`, appears publicly immediately, and appears in the admin dashboard under **Submissions**; admin removes, rejects, or moderates invalid entries through admin contestant/submission status tools.
+9. Admin can attach YouTube, TikTok, Facebook, Instagram, external video, and thumbnail links through `/api/admin/submissions/:id/youtube`.
+10. Public stage submissions list visible submissions and exclude only rejected submissions or rejected/eliminated contestants.
+11. TikTok/Facebook/Instagram metrics are entered manually through the admin engagement endpoint; there is no external social API integration yet.
 
 ## Suggested Frontend Routes
 
@@ -2280,7 +2331,7 @@ Admin-auth routes:
 - `/login` -> `/api/auth/login`.
 - `/register` -> `/api/auth/register`.
 - `/dashboard` -> `/api/auth/me`, `/api/users/me`, `/api/contestants/me`.
-- `/dashboard/wallet` -> `/api/wallet/me`, `/api/wallet/me/transactions`, `/api/payments/me`, `/api/coin-packages`.
+- `/dashboard/wallet` -> legacy only; hide for MVP unless coin/Paystack features are explicitly re-enabled.
 - `/dashboard/submissions` -> `/api/contestants/me/submissions`.
 - `/admin` -> admin overview using admin list endpoints.
 - `/admin/competitions` -> admin competition and stage management.

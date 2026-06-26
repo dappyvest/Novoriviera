@@ -45,9 +45,24 @@ Content-Type: application/json
   "name": "Jane Rivera",
   "email": "jane@example.com",
   "phone": "+2348012345678",
-  "password": "password123"
+  "password": "password123",
+  "displayName": "Jane Star",
+  "bio": "Singer",
+  "photoUrl": "https://example.com/photo.jpg",
+  "videoUrl": "https://example.com/video.mp4"
 }
 ```
+
+Registration is the main contestant onboarding flow. It creates the user as a
+`CONTESTANT` and automatically creates a contestant profile in the current
+`ACTIVE` competition, or the newest `PUBLISHED` competition when no active
+competition exists. If no competition is open for registration, the API returns:
+`No active competition is currently open for registration.`
+
+Voters do not register. Public voting is manual bank transfer through
+`POST /api/public-votes`; wallet, coin, and Paystack endpoints remain in the
+backend for legacy/future use but are not required for MVP registration or
+voting.
 
 Login:
 
@@ -191,6 +206,9 @@ Content-Type: application/json
 }
 ```
 
+This legacy join endpoint remains available for existing clients, but new
+frontend onboarding should use `POST /api/auth/register`.
+
 Contestant endpoints:
 
 ```http
@@ -201,7 +219,15 @@ GET /api/admin/contestants
 GET /api/admin/contestants/:id
 PATCH /api/admin/contestants/:id/status
 PATCH /api/admin/contestants/:id/premium
+DELETE /api/admin/contestants/:id
+POST /api/admin/competitions/:id/reset
 ```
+
+`DELETE /api/admin/contestants/:id` soft-removes a contestant from public
+profiles, submissions, and leaderboards by marking the contestant rejected and
+auditing the action. `POST /api/admin/competitions/:id/reset` archives/hides
+contestants and submissions, clears public leaderboard counters/winners, audits
+the reset, and preserves manual vote/payment records.
 
 Status update:
 

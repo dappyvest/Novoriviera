@@ -7,6 +7,7 @@ import {
 import { AdsService } from '../ads/ads.service';
 import type { CurrentUserPayload } from '../auth/types/current-user.type';
 import { CoinPackagesService } from '../coin-packages/coin-packages.service';
+import { CompetitionsService } from '../competitions/competitions.service';
 import { ContestantsService } from '../contestants/contestants.service';
 import { PaymentsService } from '../payments/payments.service';
 import { SubmissionsService } from '../submissions/submissions.service';
@@ -58,6 +59,7 @@ describe('AdminController', () => {
           },
         },
         { provide: CoinPackagesService, useValue: {} },
+        { provide: CompetitionsService, useValue: { reset: jest.fn() } },
         { provide: ContestantsService, useValue: {} },
         { provide: PaymentsService, useValue: {} },
         { provide: SubmissionsService, useValue: {} },

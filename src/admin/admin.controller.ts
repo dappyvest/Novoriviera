@@ -17,6 +17,7 @@ import { UpdateSponsoredAdDto } from '../ads/dto/update-sponsored-ad.dto';
 import { CoinPackagesService } from '../coin-packages/coin-packages.service';
 import { CreateCoinPackageDto } from '../coin-packages/dto/create-coin-package.dto';
 import { UpdateCoinPackageDto } from '../coin-packages/dto/update-coin-package.dto';
+import { CompetitionsService } from '../competitions/competitions.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -45,6 +46,7 @@ export class AdminController {
     private readonly adminService: AdminService,
     private readonly adsService: AdsService,
     private readonly coinPackagesService: CoinPackagesService,
+    private readonly competitionsService: CompetitionsService,
     private readonly contestantsService: ContestantsService,
     private readonly paymentsService: PaymentsService,
     private readonly submissionsService: SubmissionsService,
@@ -251,6 +253,14 @@ export class AdminController {
     return this.contestantsService.updateStatus(id, dto.status);
   }
 
+  @Delete('contestants/:id')
+  removeContestant(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.contestantsService.removeFromPublic(id, user.id);
+  }
+
   @Patch('contestants/:id/premium')
   updateContestantPremium(
     @Param('id') id: string,
@@ -300,6 +310,14 @@ export class AdminController {
       dto.reason,
       user.id,
     );
+  }
+
+  @Post('competitions/:id/reset')
+  resetCompetition(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.competitionsService.reset(id, user.id);
   }
 
   @Get('submissions')

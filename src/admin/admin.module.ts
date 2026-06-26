@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AdsModule } from '../ads/ads.module';
 import { CoinPackagesModule } from '../coin-packages/coin-packages.module';
+import { CompetitionsModule } from '../competitions/competitions.module';
 import { ContestantsModule } from '../contestants/contestants.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { SubmissionsModule } from '../submissions/submissions.module';
@@ -13,6 +14,7 @@ import { AdminService } from './admin.service';
   imports: [
     AdsModule,
     CoinPackagesModule,
+    CompetitionsModule,
     ContestantsModule,
     PaymentsModule,
     SubmissionsModule,
@@ -20,6 +22,6 @@ import { AdminService } from './admin.service';
     WalletModule,
   ],
   controllers: [AdminController],
-  providers: [AdminService]
+  providers: [AdminService],
 })
 export class AdminModule {}

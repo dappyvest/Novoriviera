@@ -101,6 +101,10 @@ type MockContestant = {
   competitionId: string;
   displayName: string;
   bio: string | null;
+  age: number | null;
+  location: string | null;
+  guardianName: string | null;
+  guardianPhone: string | null;
   photoUrl: string | null;
   photoPublicId: string | null;
   photoMeta: unknown | null;
@@ -423,13 +427,15 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
           updatedAt: new Date(),
         };
         users.push(user);
-        wallets.push({
-          id: `wallet-${wallets.length + 1}`,
-          userId: user.id,
-          balance: 0,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
+        if (data.coinWallet?.create) {
+          wallets.push({
+            id: `wallet-${wallets.length + 1}`,
+            userId: user.id,
+            balance: data.coinWallet.create.balance ?? 0,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+        }
         return Promise.resolve(user);
       }),
       update: jest.fn(({ where, data }) => {
@@ -480,6 +486,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         Promise.resolve(
           competitions.find((item) => {
             if (where.id && item.id !== where.id) return false;
+            if (where.status && typeof where.status === 'string') {
+              return item.status === where.status;
+            }
             if (where.status?.in && !where.status.in.includes(item.status))
               return false;
             return true;
@@ -538,7 +547,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
           stages.find(
             (stage) =>
               stage.competitionId === where.competitionId &&
-              stage.status === where.status &&
+              (!where.status || stage.status === where.status) &&
               (!where.id?.not || stage.id !== where.id.not),
           ) ?? null,
         ),
@@ -711,6 +720,10 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
           competitionId: data.competitionId,
           displayName: data.displayName,
           bio: data.bio ?? null,
+          age: data.age ?? null,
+          location: data.location ?? null,
+          guardianName: data.guardianName ?? null,
+          guardianPhone: data.guardianPhone ?? null,
           photoUrl: data.photoUrl ?? null,
           photoPublicId: data.photoPublicId ?? null,
           photoMeta: data.photoMeta ?? null,
@@ -828,6 +841,27 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         if (!submission) throw new Error('not found');
         Object.assign(submission, data, { updatedAt: new Date() });
         return Promise.resolve(submission);
+      }),
+      updateMany: jest.fn(({ where, data }) => {
+        let count = 0;
+        submissions.forEach((submission) => {
+          const contestant = contestants.find(
+            (item) => item.id === submission.contestantId,
+          );
+          const matchesContestantId =
+            !where?.contestantId ||
+            submission.contestantId === where.contestantId;
+          const matchesCompetition =
+            !where?.contestant?.competitionId ||
+            contestant?.competitionId === where.contestant.competitionId;
+
+          if (matchesContestantId && matchesCompetition) {
+            Object.assign(submission, data, { updatedAt: new Date() });
+            count += 1;
+          }
+        });
+
+        return Promise.resolve({ count });
       }),
     },
     coinWallet: {
@@ -1132,6 +1166,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         );
       }),
       deleteMany: jest.fn(({ where }) => {
+        let count = 0;
         for (
           let index = competitionWinners.length - 1;
           index >= 0;
@@ -1139,9 +1174,10 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         ) {
           if (competitionWinners[index].competitionId === where.competitionId) {
             competitionWinners.splice(index, 1);
+            count += 1;
           }
         }
-        return Promise.resolve({ count: 0 });
+        return Promise.resolve({ count });
       }),
       create: jest.fn(({ data }) => {
         const winner: MockCompetitionWinner = {
@@ -1576,7 +1612,41 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
     await app?.close();
   });
 
+  function ensureRegistrationCompetition() {
+    if (
+      competitions.some((competition) =>
+        [CompetitionStatus.ACTIVE, CompetitionStatus.PUBLISHED].includes(
+          competition.status,
+        ),
+      )
+    ) {
+      return;
+    }
+
+    competitions.push({
+      id: `competition-${competitions.length + 1}`,
+      title: 'Open Registration Competition',
+      slug: `open-registration-${competitions.length + 1}`,
+      description: null,
+      bannerUrl: null,
+      status: CompetitionStatus.PUBLISHED,
+      prizeFirst: null,
+      prizeSecond: null,
+      prizeThird: null,
+      manualVotingEnabled: true,
+      votePriceNaira: 500,
+      paymentBankName: null,
+      paymentAccountName: null,
+      paymentAccountNumber: null,
+      paymentInstructions: null,
+      ownerId: undefined,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+
   async function registerUser(email: string) {
+    ensureRegistrationCompetition();
     return request(app.getHttpServer())
       .post('/api/auth/register')
       .send({
@@ -1585,6 +1655,177 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         password: 'password123',
       });
   }
+
+  it('registers every user as a contestant for the active registration competition', async () => {
+    ensureRegistrationCompetition();
+
+    const response = await request(app.getHttpServer())
+      .post('/api/auth/register')
+      .send({
+        name: 'Ada Rivera',
+        email: 'auto-contestant@example.com',
+        phone: '08000000001',
+        password: 'password123',
+        displayName: 'Ada Star',
+        bio: 'Singer',
+        age: 19,
+        location: 'Lagos',
+        guardianName: 'Guardian Rivera',
+        guardianPhone: '08000000002',
+        photoUrl: 'https://example.com/ada.jpg',
+      })
+      .expect(201);
+
+    expect(response.body.user).toMatchObject({
+      email: 'auto-contestant@example.com',
+      role: UserRole.CONTESTANT,
+    });
+    expect(response.body.contestant).toMatchObject({
+      competitionId: competitions[0].id,
+      displayName: 'Ada Star',
+      bio: 'Singer',
+      age: 19,
+      location: 'Lagos',
+      guardianName: 'Guardian Rivera',
+      guardianPhone: '08000000002',
+      photoUrl: 'https://example.com/ada.jpg',
+      status: ContestantStatus.PENDING,
+    });
+    expect(response.body.contestant.contestantCode).toMatch(/^NRV-\d{6}$/);
+    expect(wallets).toHaveLength(0);
+
+    const publicResponse = await request(app.getHttpServer())
+      .get(`/api/contestants/${response.body.contestant.id}`)
+      .expect(200);
+    expect(publicResponse.body).toMatchObject({
+      id: response.body.contestant.id,
+      displayName: 'Ada Star',
+      photoUrl: 'https://example.com/ada.jpg',
+    });
+  });
+
+  it('returns a clear error when registration has no active competition', async () => {
+    await request(app.getHttpServer())
+      .post('/api/auth/register')
+      .send({
+        name: 'No Competition User',
+        email: 'no-competition@example.com',
+        password: 'password123',
+        displayName: 'No Competition',
+      })
+      .expect(400)
+      .expect(({ body }) => {
+        expect(body.message).toBe(
+          'No active competition is currently open for registration.',
+        );
+      });
+  });
+
+  it('lets admins remove contestants from public profiles and leaderboards', async () => {
+    const adminAuth = await registerUser('remove-admin@example.com');
+    users[0].role = UserRole.ADMIN;
+    const contestantAuth = await registerUser('remove-contestant@example.com');
+    const contestant = contestants.find(
+      (item) => item.userId === contestantAuth.body.user.id,
+    )!;
+
+    await request(app.getHttpServer())
+      .get(`/api/contestants/${contestant.id}`)
+      .expect(200);
+
+    const removeResponse = await request(app.getHttpServer())
+      .delete(`/api/admin/contestants/${contestant.id}`)
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .expect(200);
+    expect(removeResponse.body.status).toBe(ContestantStatus.REJECTED);
+
+    await request(app.getHttpServer())
+      .get(`/api/contestants/${contestant.id}`)
+      .expect(404);
+
+    const leaderboardResponse = await request(app.getHttpServer())
+      .get(`/api/competitions/${contestant.competitionId}/leaderboard`)
+      .expect(200);
+    expect(
+      leaderboardResponse.body.some(
+        (entry: { contestantId: string }) => entry.contestantId === contestant.id,
+      ),
+    ).toBe(false);
+    expect(adminAuditLogs).toEqual([
+      expect.objectContaining({
+        action: 'CONTESTANT_REMOVE',
+        entityId: contestant.id,
+      }),
+    ]);
+  });
+
+  it('resets a competition by hiding entrants and clearing public leaderboard data', async () => {
+    const adminAuth = await registerUser('reset-admin@example.com');
+    users[0].role = UserRole.ADMIN;
+    const contestantAuth = await registerUser('reset-contestant@example.com');
+    const contestant = contestants.find(
+      (item) => item.userId === contestantAuth.body.user.id,
+    )!;
+    contestants[contestants.indexOf(contestant)].totalVotes = 12;
+
+    const stage = {
+      id: `stage-${stages.length + 1}`,
+      title: 'Open Videos',
+      stageNumber: 1,
+      competitionId: contestant.competitionId,
+      status: StageStatus.ACTIVE,
+      submissionStartDate: null,
+      submissionEndDate: null,
+      votingStartDate: null,
+      votingEndDate: null,
+      eliminationPercentage: 30,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    stages.push(stage);
+    submissions.push({
+      id: `submission-${submissions.length + 1}`,
+      contestantId: contestant.id,
+      stageId: stage.id,
+      title: 'Reset Video',
+      description: null,
+      videoUrl: 'https://example.com/reset.mp4',
+      uploadUrl: null,
+      status: SubmissionStatus.APPROVED,
+      youtubeUrl: null,
+      tiktokUrl: null,
+      facebookUrl: null,
+      instagramUrl: null,
+      externalVideoUrl: null,
+      thumbnailUrl: null,
+      cloudinaryPublicId: null,
+      cloudinarySecureUrl: null,
+      uploadedFileMeta: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const resetResponse = await request(app.getHttpServer())
+      .post(`/api/admin/competitions/${contestant.competitionId}/reset`)
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .expect(201);
+
+    expect(resetResponse.body).toMatchObject({
+      competitionId: contestant.competitionId,
+      contestantsArchived: 2,
+      submissionsArchived: 1,
+      manualVotePaymentsPreserved: true,
+      paymentRecordsPreserved: true,
+    });
+    expect(contestant.status).toBe(ContestantStatus.REJECTED);
+    expect(contestant.totalVotes).toBe(0);
+    expect(submissions[0].status).toBe(SubmissionStatus.REJECTED);
+
+    const leaderboardResponse = await request(app.getHttpServer())
+      .get(`/api/competitions/${contestant.competitionId}/leaderboard`)
+      .expect(200);
+    expect(leaderboardResponse.body).toEqual([]);
+  });
 
   it('supports admin-managed sponsored ads and public tracking', async () => {
     const adminAuth = await registerUser('ads-admin@example.com');
@@ -1870,7 +2111,10 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       votePriceNaira: 1000,
       votesCalculated: 2,
     });
-    expect(contestants[0].totalVotes).toBe(0);
+    const manualVoteContestant = contestants.find(
+      (item) => item.id === contestantResponse.body.id,
+    )!;
+    expect(manualVoteContestant.totalVotes).toBe(0);
 
     const approvedResponse = await request(app.getHttpServer())
       .patch(`/api/admin/public-votes/${pendingVoteResponse.body.id}/status`)
@@ -1881,14 +2125,14 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       })
       .expect(200);
     expect(approvedResponse.body.status).toBe(ManualVotePaymentStatus.APPROVED);
-    expect(contestants[0].totalVotes).toBe(2);
+    expect(manualVoteContestant.totalVotes).toBe(2);
 
     await request(app.getHttpServer())
       .patch(`/api/admin/public-votes/${pendingVoteResponse.body.id}/status`)
       .set('Authorization', `Bearer ${adminAuth.body.token}`)
       .send({ status: ManualVotePaymentStatus.APPROVED })
       .expect(200);
-    expect(contestants[0].totalVotes).toBe(2);
+    expect(manualVoteContestant.totalVotes).toBe(2);
 
     const rejectedVoteResponse = await request(app.getHttpServer())
       .post('/api/public-votes')
@@ -1910,14 +2154,14 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         adminNote: 'Could not verify transfer',
       })
       .expect(200);
-    expect(contestants[0].totalVotes).toBe(2);
+    expect(manualVoteContestant.totalVotes).toBe(2);
 
     await request(app.getHttpServer())
       .patch(`/api/admin/public-votes/${pendingVoteResponse.body.id}/status`)
       .set('Authorization', `Bearer ${adminAuth.body.token}`)
       .send({ status: ManualVotePaymentStatus.REJECTED })
       .expect(200);
-    expect(contestants[0].totalVotes).toBe(0);
+    expect(manualVoteContestant.totalVotes).toBe(0);
 
     const filteredAdminListResponse = await request(app.getHttpServer())
       .get(
@@ -2245,7 +2489,11 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       .get('/api/contestants/me')
       .set('Authorization', `Bearer ${ownerAuth.body.token}`)
       .expect(200);
-    expect(mineResponse.body[0]).toMatchObject(photoPayload);
+    expect(
+      mineResponse.body.find(
+        (item: { id: string }) => item.id === contestantResponse.body.id,
+      ),
+    ).toMatchObject(photoPayload);
 
     const mineForCompetitionResponse = await request(app.getHttpServer())
       .get(`/api/contestants/me/${competitionResponse.body.id}`)
@@ -2265,7 +2513,11 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       .get('/api/admin/contestants')
       .set('Authorization', `Bearer ${adminAuth.body.token}`)
       .expect(200);
-    expect(adminListResponse.body[0]).toMatchObject(photoPayload);
+    expect(
+      adminListResponse.body.find(
+        (item: { id: string }) => item.id === contestantResponse.body.id,
+      ),
+    ).toMatchObject(photoPayload);
 
     const adminDetailResponse = await request(app.getHttpServer())
       .get(`/api/admin/contestants/${contestantResponse.body.id}`)
