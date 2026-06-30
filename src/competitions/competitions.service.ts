@@ -8,6 +8,7 @@ import {
 import {
   CompetitionStatus,
   ContestantStatus,
+  ManualVotePaymentStatus,
   Prisma,
   SubmissionStatus,
   UserRole,
@@ -157,6 +158,59 @@ export class CompetitionsService {
         winnersCleared: winners.count,
         manualVotePaymentsPreserved: true,
         paymentRecordsPreserved: true,
+      };
+    });
+  }
+
+  async resetVotes(id: string, actorId: string) {
+    await this.ensureExists(id);
+
+    return this.prisma.$transaction(async (tx) => {
+      const contestants = await tx.contestant.updateMany({
+        where: { competitionId: id },
+        data: { totalVotes: 0 },
+      });
+
+      const manualVotePayments = await tx.manualVotePayment.updateMany({
+        where: { competitionId: id },
+        data: {
+          status: ManualVotePaymentStatus.REJECTED,
+          adminNote:
+            'Vote counter reset: payment archived and excluded from totals.',
+          verifiedAt: null,
+          verifiedById: null,
+        },
+      });
+
+      const legacyVotes = await tx.vote.deleteMany({
+        where: { competitionId: id },
+      });
+
+      await tx.adminAuditLog.create({
+        data: {
+          actorId,
+          action: 'COMPETITION_VOTES_RESET',
+          entity: 'Competition',
+          entityId: id,
+          metadata: {
+            contestantsReset: contestants.count,
+            manualVotePaymentsRejected: manualVotePayments.count,
+            legacyVoteRecordsReset: legacyVotes.count,
+            usersDeleted: false,
+            contestantsDeleted: false,
+            submissionsDeleted: false,
+          },
+        },
+      });
+
+      return {
+        competitionId: id,
+        contestantsReset: contestants.count,
+        manualVotePaymentsRejected: manualVotePayments.count,
+        legacyVoteRecordsReset: legacyVotes.count,
+        usersDeleted: false,
+        contestantsDeleted: false,
+        submissionsDeleted: false,
       };
     });
   }

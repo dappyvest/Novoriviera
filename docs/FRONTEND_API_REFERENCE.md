@@ -520,6 +520,21 @@ Body:
 
 Registration is contestant registration. The backend creates the user as a `CONTESTANT` and automatically creates a contestant profile in the current `ACTIVE` competition, falling back to the newest `PUBLISHED` competition. Voters do not register.
 
+If the registration form collects a photo or intro video before the user exists,
+upload those files first through the public registration upload endpoints:
+
+```http
+POST /api/uploads/registration-image
+POST /api/uploads/registration-video
+Content-Type: multipart/form-data
+
+file=<image or video file>
+```
+
+Use the returned `secureUrl` and `publicId` values in the registration body.
+Registration images accept JPG, JPEG, PNG, and WebP up to 5 MB. Registration
+videos accept MP4, MOV, WebM, AVI, MKV, and 3GP up to 100 MB.
+
 Success:
 
 ```json
@@ -752,6 +767,8 @@ Cloudinary credentials are backend-only. Do not store or use `CLOUDINARY_API_SEC
 | --- | --- | --- | --- |
 | `POST` | `/api/uploads/video` | Required | Any active user |
 | `POST` | `/api/uploads/image` | Required | Any active user |
+| `POST` | `/api/uploads/registration-image` | Public | None |
+| `POST` | `/api/uploads/registration-video` | Public | None |
 | `POST` | `/api/uploads/payment-proof` | Public | None |
 
 Request:
@@ -761,6 +778,9 @@ Request:
 - Video route accepts MP4, MOV, WebM, AVI, MKV, and 3GP.
 - Image route accepts `image/*` only.
 - Max video upload size is configured by `MAX_VIDEO_UPLOAD_SIZE_MB`, default `50` MB.
+- Registration image route accepts JPG, JPEG, PNG, and WebP, max `5` MB.
+- Registration video route accepts MP4, MOV, WebM, AVI, MKV, and 3GP, max `100` MB.
+- Registration uploads use fixed Cloudinary folders `novoriviera/registration-images` and `novoriviera/registration-videos`.
 - Payment proof route accepts only JPG, JPEG, PNG, and WebP images.
 - Payment proof max size is configured by `MAX_PAYMENT_PROOF_UPLOAD_SIZE_MB`, default `5` MB.
 - Payment proofs upload to the fixed Cloudinary folder `novoriviera/payment-proofs`.
@@ -780,9 +800,11 @@ Success:
 
 Use the image response `secureUrl` and `publicId` with the contestant photo update endpoint. Cloudinary API credentials and signatures are never returned.
 
+Use `POST /api/uploads/registration-image` and `POST /api/uploads/registration-video` before `POST /api/auth/register` when the new-user form uploads media before authentication. Send the returned `secureUrl` as `photoUrl`, `videoUrl`, `uploadUrl`, or `cloudinarySecureUrl` as appropriate, and keep Cloudinary credentials out of the frontend.
+
 Use `POST /api/uploads/payment-proof` before `POST /api/public-votes` when the voter chooses a proof image. Send the returned `secureUrl` as `proofImageUrl`. This endpoint is intentionally public because voters do not register or log in.
 
-Common errors: `400` missing file or unsupported/invalid payment proof format, `401` for auth-required upload routes, `413` file too large, `502` Cloudinary upload failure, `503` Cloudinary not configured. All application errors are JSON responses.
+Common errors: `400` missing file or unsupported/invalid format, `401` for auth-required upload routes, `413` file too large, `502` Cloudinary upload failure, `503` Cloudinary not configured. All application errors are JSON responses.
 
 ### Manual Public Voting
 
@@ -1785,6 +1807,7 @@ All routes require admin auth.
 | `PATCH` | `/api/competitions/:id` |
 | `DELETE` | `/api/competitions/:id` |
 | `POST` | `/api/admin/competitions/:id/reset` |
+| `POST` | `/api/admin/competitions/:id/reset-votes` |
 | `POST` | `/api/competitions/:competitionId/declare-winners` |
 
 Create/update body:
@@ -1831,6 +1854,27 @@ Success:
   "winnersCleared": 3,
   "manualVotePaymentsPreserved": true,
   "paymentRecordsPreserved": true
+}
+```
+
+`POST /api/admin/competitions/:id/reset-votes`
+
+Resets only vote counters for a competition. It sets contestant `totalVotes` to
+`0`, rejects/archives manual vote payments so they no longer count, clears legacy
+vote rows, and writes a `COMPETITION_VOTES_RESET` audit log. It does not delete
+users, contestants, or submissions.
+
+Success:
+
+```json
+{
+  "competitionId": "competition-id",
+  "contestantsReset": 12,
+  "manualVotePaymentsRejected": 20,
+  "legacyVoteRecordsReset": 50,
+  "usersDeleted": false,
+  "contestantsDeleted": false,
+  "submissionsDeleted": false
 }
 ```
 
@@ -2311,8 +2355,8 @@ Admin-auth routes:
 1. Contestant registers through `/api/auth/register`.
 2. Backend automatically creates the contestant profile in the active/default competition.
 3. Contestant starts as `PENDING` but appears publicly immediately unless admin rejects/removes them.
-4. Optional photo path: upload an image to `/api/uploads/image`, then include `photoUrl` during registration or set it afterward through `/api/contestants/me/:competitionId/photo`.
-5. Optional video path: upload video to `/api/uploads/video`, then include `videoUrl`, `uploadUrl`, or `cloudinarySecureUrl` during registration when practical. If submitted after registration, use `/api/stages/:stageId/submissions`.
+4. Optional photo path before signup: upload an image to `/api/uploads/registration-image`, then include `photoUrl` and optional `photoPublicId`/metadata during registration. After login, use `/api/uploads/image` with `/api/contestants/me/:competitionId/photo` for photo changes.
+5. Optional video path before signup: upload video to `/api/uploads/registration-video`, then include `videoUrl`, `uploadUrl`, or `cloudinarySecureUrl` during registration when practical. If submitted after registration, use `/api/uploads/video` and `/api/stages/:stageId/submissions`.
 6. Registered contestants can submit immediately to open submission stages; only `REJECTED` and `ELIMINATED` contestant profiles are blocked.
 7. One submission is allowed per contestant per stage.
 8. Submission starts as `APPROVED`, appears publicly immediately, and appears in the admin dashboard under **Submissions**; admin removes, rejects, or moderates invalid entries through admin contestant/submission status tools.

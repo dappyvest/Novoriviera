@@ -32,6 +32,8 @@ describe('AdminController', () => {
   const adsCreate = jest.fn();
   const adsUpdate = jest.fn();
   const adsRemove = jest.fn();
+  const competitionReset = jest.fn();
+  const competitionResetVotes = jest.fn();
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -59,7 +61,13 @@ describe('AdminController', () => {
           },
         },
         { provide: CoinPackagesService, useValue: {} },
-        { provide: CompetitionsService, useValue: { reset: jest.fn() } },
+        {
+          provide: CompetitionsService,
+          useValue: {
+            reset: competitionReset,
+            resetVotes: competitionResetVotes,
+          },
+        },
         { provide: ContestantsService, useValue: {} },
         { provide: PaymentsService, useValue: {} },
         { provide: SubmissionsService, useValue: {} },
@@ -125,5 +133,26 @@ describe('AdminController', () => {
       entity: 'SponsoredAd',
       entityId: 'ad-1',
     });
+  });
+
+  it('routes competition vote reset to the competition service with the admin actor', async () => {
+    competitionResetVotes.mockResolvedValue({
+      competitionId: 'competition-1',
+      contestantsReset: 2,
+      manualVotePaymentsRejected: 3,
+      legacyVoteRecordsReset: 4,
+    });
+
+    await expect(
+      controller.resetCompetitionVotes('competition-1', adminUser),
+    ).resolves.toMatchObject({
+      competitionId: 'competition-1',
+      contestantsReset: 2,
+    });
+
+    expect(competitionResetVotes).toHaveBeenCalledWith(
+      'competition-1',
+      'admin-1',
+    );
   });
 });

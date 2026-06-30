@@ -320,6 +320,14 @@ export class AdminController {
     return this.competitionsService.reset(id, user.id);
   }
 
+  @Post('competitions/:id/reset-votes')
+  resetCompetitionVotes(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.competitionsService.resetVotes(id, user.id);
+  }
+
   @Get('submissions')
   findSubmissions() {
     return this.submissionsService.findAll();

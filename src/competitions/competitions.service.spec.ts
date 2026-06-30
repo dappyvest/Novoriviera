@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   CompetitionStatus,
   ContestantStatus,
+  ManualVotePaymentStatus,
   SubmissionStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -10,18 +11,36 @@ import { CompetitionsService } from './competitions.service';
 describe('CompetitionsService', () => {
   let service: CompetitionsService;
   const competitionFindFirst = jest.fn();
+  const competitionFindUnique = jest.fn();
   const contestantFindMany = jest.fn();
+  const prismaTransaction = jest.fn();
+  const contestantUpdateMany = jest.fn();
+  const manualVotePaymentUpdateMany = jest.fn();
+  const voteDeleteMany = jest.fn();
+  const adminAuditLogCreate = jest.fn();
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    prismaTransaction.mockImplementation((callback) =>
+      callback({
+        contestant: { updateMany: contestantUpdateMany },
+        manualVotePayment: { updateMany: manualVotePaymentUpdateMany },
+        vote: { deleteMany: voteDeleteMany },
+        adminAuditLog: { create: adminAuditLogCreate },
+      }),
+    );
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CompetitionsService,
         {
           provide: PrismaService,
           useValue: {
-            competition: { findFirst: competitionFindFirst },
+            competition: {
+              findFirst: competitionFindFirst,
+              findUnique: competitionFindUnique,
+            },
             contestant: { findMany: contestantFindMany },
+            $transaction: prismaTransaction,
           },
         },
       ],
@@ -183,5 +202,62 @@ describe('CompetitionsService', () => {
         },
       }),
     );
+  });
+
+  it('resets competition vote counters and excludes old vote records from totals', async () => {
+    competitionFindUnique.mockResolvedValue({
+      id: 'competition-1',
+      status: CompetitionStatus.ACTIVE,
+    });
+    contestantUpdateMany.mockResolvedValue({ count: 3 });
+    manualVotePaymentUpdateMany.mockResolvedValue({ count: 4 });
+    voteDeleteMany.mockResolvedValue({ count: 5 });
+    adminAuditLogCreate.mockResolvedValue({ id: 'audit-1' });
+
+    await expect(
+      service.resetVotes('competition-1', 'admin-1'),
+    ).resolves.toEqual({
+      competitionId: 'competition-1',
+      contestantsReset: 3,
+      manualVotePaymentsRejected: 4,
+      legacyVoteRecordsReset: 5,
+      usersDeleted: false,
+      contestantsDeleted: false,
+      submissionsDeleted: false,
+    });
+
+    expect(contestantUpdateMany).toHaveBeenCalledWith({
+      where: { competitionId: 'competition-1' },
+      data: { totalVotes: 0 },
+    });
+    expect(manualVotePaymentUpdateMany).toHaveBeenCalledWith({
+      where: { competitionId: 'competition-1' },
+      data: {
+        status: ManualVotePaymentStatus.REJECTED,
+        adminNote:
+          'Vote counter reset: payment archived and excluded from totals.',
+        verifiedAt: null,
+        verifiedById: null,
+      },
+    });
+    expect(voteDeleteMany).toHaveBeenCalledWith({
+      where: { competitionId: 'competition-1' },
+    });
+    expect(adminAuditLogCreate).toHaveBeenCalledWith({
+      data: {
+        actorId: 'admin-1',
+        action: 'COMPETITION_VOTES_RESET',
+        entity: 'Competition',
+        entityId: 'competition-1',
+        metadata: {
+          contestantsReset: 3,
+          manualVotePaymentsRejected: 4,
+          legacyVoteRecordsReset: 5,
+          usersDeleted: false,
+          contestantsDeleted: false,
+          submissionsDeleted: false,
+        },
+      },
+    });
   });
 });

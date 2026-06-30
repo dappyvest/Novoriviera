@@ -59,6 +59,23 @@ Registration is the main contestant onboarding flow. It creates the user as a
 competition exists. If no competition is open for registration, the API returns:
 `No active competition is currently open for registration.`
 
+Before registration, the frontend can upload optional contestant media without
+authentication:
+
+```http
+POST /api/uploads/registration-image
+POST /api/uploads/registration-video
+Content-Type: multipart/form-data
+
+file=<image or video file>
+```
+
+Registration images accept JPG, JPEG, PNG, and WebP up to 5 MB and upload to
+`novoriviera/registration-images`. Registration videos accept MP4, MOV, WebM,
+AVI, MKV, and 3GP up to 100 MB and upload to
+`novoriviera/registration-videos`. Use the returned `secureUrl` and `publicId`
+in the registration body. Cloudinary secrets stay backend-only.
+
 Voters do not register. Public voting is manual bank transfer through
 `POST /api/public-votes`; wallet, coin, and Paystack endpoints remain in the
 backend for legacy/future use but are not required for MVP registration or
@@ -221,6 +238,7 @@ PATCH /api/admin/contestants/:id/status
 PATCH /api/admin/contestants/:id/premium
 DELETE /api/admin/contestants/:id
 POST /api/admin/competitions/:id/reset
+POST /api/admin/competitions/:id/reset-votes
 ```
 
 `DELETE /api/admin/contestants/:id` soft-removes a contestant from public
@@ -228,6 +246,11 @@ profiles, submissions, and leaderboards by marking the contestant rejected and
 auditing the action. `POST /api/admin/competitions/:id/reset` archives/hides
 contestants and submissions, clears public leaderboard counters/winners, audits
 the reset, and preserves manual vote/payment records.
+`POST /api/admin/competitions/:id/reset-votes` only resets vote data for a
+competition: contestant `totalVotes` is set to `0`, manual vote payments are
+rejected/archived so they no longer count, legacy vote rows are cleared, and a
+`COMPETITION_VOTES_RESET` audit log is written. Users, contestants, and
+submissions are not deleted.
 
 Status update:
 
@@ -805,6 +828,22 @@ file=<jpg|jpeg|png|webp image>
 ```
 
 Payment proof uploads are public so unregistered voters can submit transfer receipts. They accept only JPG, JPEG, PNG, and WebP images, default to `MAX_PAYMENT_PROOF_UPLOAD_SIZE_MB=5`, and upload to the fixed Cloudinary folder `novoriviera/payment-proofs`.
+
+Public registration uploads:
+
+```http
+POST /api/uploads/registration-image
+POST /api/uploads/registration-video
+Content-Type: multipart/form-data
+
+file=<jpg|jpeg|png|webp image or mp4|mov|webm|avi|mkv|3gp video>
+```
+
+These endpoints require no auth so new contestants can upload media before
+`POST /api/auth/register`. Registration images are limited to 5 MB and upload
+to `novoriviera/registration-images`. Registration videos are limited to 100 MB,
+stored on temporary disk, streamed to Cloudinary, and upload to
+`novoriviera/registration-videos`.
 
 Upload response:
 
