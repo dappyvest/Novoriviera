@@ -9,6 +9,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { getVotingWindowStatus } from '../competitions/voting-window.util';
 import { CreatePublicVoteDto } from './dto/create-public-vote.dto';
 import { UpdatePublicVoteStatusDto } from './dto/update-public-vote-status.dto';
 
@@ -43,6 +44,11 @@ export class PublicVotesService {
 
     if (!contestant.competition.manualVotingEnabled) {
       throw new BadRequestException('Manual voting is not enabled');
+    }
+
+    const votingStatus = getVotingWindowStatus(contestant.competition);
+    if (!votingStatus.votingOpen) {
+      throw new BadRequestException(votingStatus.votingStatusMessage);
     }
 
     if (dto.amountPaid < contestant.competition.votePriceNaira) {

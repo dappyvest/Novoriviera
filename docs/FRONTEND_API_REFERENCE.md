@@ -129,6 +129,9 @@ export interface Competition {
   prizeThird: string | null;
   rules: string | null;
   manualVotingEnabled: boolean;
+  votingEnabled: boolean;
+  votingStartsAt: string | null;
+  votingEndsAt: string | null;
   votePriceNaira?: number;
   paymentBankName?: string | null;
   paymentAccountName?: string | null;
@@ -845,6 +848,10 @@ Success:
   "accountName": "NovoRivera Votes",
   "accountNumber": "1234567890",
   "paymentInstructions": "Transfer and include contestant code.",
+  "votingOpen": true,
+  "votingStatusMessage": "Voting is open.",
+  "votingStartsAt": "2026-07-01T00:00:00.000Z",
+  "votingEndsAt": "2026-08-01T00:00:00.000Z",
   "requiredNarration": "NRV-100001",
   "contestantCode": "NRV-100001"
 }
@@ -896,9 +903,22 @@ Rules:
 - Contestant must belong to `competitionId`.
 - Contestant must not be `REJECTED` or `ELIMINATED`.
 - Competition `manualVotingEnabled` must be `true`.
+- Competition `votingEnabled` must be `true`.
+- If `votingStartsAt` is set, current time must be on or after it.
+- If `votingEndsAt` is set, current time must be before it.
 - `amountPaid` must be at least `votePriceNaira`.
 - `votesCalculated = floor(amountPaid / votePriceNaira)`.
 - Initial status is `PENDING`; votes are not added until admin approval.
+
+When the public voting window is not open, `POST /api/public-votes` returns `400` with:
+
+```json
+{
+  "message": "Voting has not started yet.",
+  "error": "Bad Request",
+  "statusCode": 400
+}
+```
 
 Admin list filters:
 
@@ -922,6 +942,9 @@ Admin competition create/update accepts manual voting fields:
 ```json
 {
   "manualVotingEnabled": true,
+  "votingEnabled": true,
+  "votingStartsAt": "2026-07-01T00:00:00.000Z",
+  "votingEndsAt": "2026-08-01T00:00:00.000Z",
   "votePriceNaira": 500,
   "paymentBankName": "Novo Bank",
   "paymentAccountName": "NovoRivera Votes",
@@ -930,7 +953,7 @@ Admin competition create/update accepts manual voting fields:
 }
 ```
 
-Public competition detail exposes bank/payment fields only when `manualVotingEnabled` is `true`.
+Public competition detail exposes bank/payment fields only when `manualVotingEnabled` is `true`. `GET /api/contestants/code/:contestantCode/vote-info` always includes `votingOpen`, `votingStatusMessage`, `votingStartsAt`, and `votingEndsAt` when manual voting is enabled.
 
 ### Sponsored Ads
 
@@ -1826,6 +1849,9 @@ Create/update body:
   "prizeThird": "Third prize",
   "rules": "Competition rules",
   "manualVotingEnabled": true,
+  "votingEnabled": true,
+  "votingStartsAt": "2026-07-01T00:00:00.000Z",
+  "votingEndsAt": "2026-08-01T00:00:00.000Z",
   "votePriceNaira": 500,
   "paymentBankName": "Novo Bank",
   "paymentAccountName": "NovoRivera Votes",
@@ -1834,7 +1860,7 @@ Create/update body:
 }
 ```
 
-The manual voting fields above are set per competition through this same create/update endpoint. When `manualVotingEnabled` is `true`, public competition detail and `GET /api/contestants/code/:contestantCode/vote-info` expose the vote price, bank name, account name, account number, and payment instructions for that competition. When `manualVotingEnabled` is `false`, public competition detail hides the payment fields and vote-info returns `404`.
+The manual voting fields above are set per competition through this same create/update endpoint. When `manualVotingEnabled` is `true`, public competition detail and `GET /api/contestants/code/:contestantCode/vote-info` expose the vote price, bank name, account name, account number, and payment instructions for that competition. `votingEnabled` defaults to `false`; set it to `true` and optionally use `votingStartsAt` / `votingEndsAt` to control when public manual vote submissions are accepted. When `manualVotingEnabled` is `false`, public competition detail hides the payment fields and vote-info returns `404`.
 
 Success: `Competition`.
 

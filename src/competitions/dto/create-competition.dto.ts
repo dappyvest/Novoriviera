@@ -56,6 +56,18 @@ export class CreateCompetitionDto {
   @IsOptional()
   manualVotingEnabled?: boolean;
 
+  @IsBoolean()
+  @IsOptional()
+  votingEnabled?: boolean;
+
+  @IsISO8601()
+  @IsOptional()
+  votingStartsAt?: string;
+
+  @IsISO8601()
+  @IsOptional()
+  votingEndsAt?: string;
+
   @IsInt()
   @Min(1)
   @IsOptional()

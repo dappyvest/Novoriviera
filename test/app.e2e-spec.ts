@@ -69,6 +69,9 @@ type MockCompetition = {
   prizeSecond: string | null;
   prizeThird: string | null;
   manualVotingEnabled: boolean;
+  votingEnabled: boolean;
+  votingStartsAt: Date | null;
+  votingEndsAt: Date | null;
   votePriceNaira: number;
   paymentBankName: string | null;
   paymentAccountName: string | null;
@@ -464,6 +467,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
           prizeSecond: data.prizeSecond ?? null,
           prizeThird: data.prizeThird ?? null,
           manualVotingEnabled: data.manualVotingEnabled ?? true,
+          votingEnabled: data.votingEnabled ?? false,
+          votingStartsAt: data.votingStartsAt ?? null,
+          votingEndsAt: data.votingEndsAt ?? null,
           votePriceNaira: data.votePriceNaira ?? 500,
           paymentBankName: data.paymentBankName ?? null,
           paymentAccountName: data.paymentAccountName ?? null,
@@ -579,6 +585,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
                     (item) => item.id === contestant.competitionId,
                   ),
                 }
+              : {}),
+            ...(include?.user
+              ? { user: users.find((item) => item.id === contestant.userId) }
               : {}),
           };
         };
@@ -758,10 +767,13 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         return Promise.resolve(contestant);
       }),
       updateMany: jest.fn(({ where, data }) => {
-        contestants
-          .filter((item) => where.id.in.includes(item.id))
-          .forEach((item) => Object.assign(item, data));
-        return Promise.resolve({ count: where.id.in.length });
+        const matched = contestants.filter((item) => {
+          if (where.id?.in) return where.id.in.includes(item.id);
+          if (where.competitionId) return item.competitionId === where.competitionId;
+          return true;
+        });
+        matched.forEach((item) => Object.assign(item, data));
+        return Promise.resolve({ count: matched.length });
       }),
     },
     submission: {
@@ -954,6 +966,15 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
           })),
         );
       }),
+      deleteMany: jest.fn(({ where } = {}) => {
+        const before = votes.length;
+        for (let index = votes.length - 1; index >= 0; index -= 1) {
+          if (!where?.competitionId || votes[index].competitionId === where.competitionId) {
+            votes.splice(index, 1);
+          }
+        }
+        return Promise.resolve({ count: before - votes.length });
+      }),
     },
     manualVotePayment: {
       create: jest.fn(({ data }) => {
@@ -1017,6 +1038,19 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         if (!payment) throw new Error('not found');
         Object.assign(payment, data, { updatedAt: new Date() });
         return Promise.resolve(withManualVoteRelations(payment));
+      }),
+      updateMany: jest.fn(({ where, data }) => {
+        const matched = manualVotePayments.filter((item) => {
+          if (where?.competitionId && item.competitionId !== where.competitionId) {
+            return false;
+          }
+          if (where?.status && item.status !== where.status) {
+            return false;
+          }
+          return true;
+        });
+        matched.forEach((item) => Object.assign(item, data, { updatedAt: new Date() }));
+        return Promise.resolve({ count: matched.length });
       }),
     },
     coinPackage: {
@@ -1634,6 +1668,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       prizeSecond: null,
       prizeThird: null,
       manualVotingEnabled: true,
+      votingEnabled: false,
+      votingStartsAt: null,
+      votingEndsAt: null,
       votePriceNaira: 500,
       paymentBankName: null,
       paymentAccountName: null,
@@ -1652,12 +1689,25 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       .send({
         name: email.includes('admin') ? 'Admin User' : 'Jane Rivera',
         email,
+        phone: '08000000000',
         password: 'password123',
       });
   }
 
   it('registers every user as a contestant for the active registration competition', async () => {
     ensureRegistrationCompetition();
+
+    await request(app.getHttpServer())
+      .post('/api/auth/register')
+      .send({
+        name: 'No Phone User',
+        email: 'missing-phone@example.com',
+        password: 'password123',
+      })
+      .expect(400)
+      .expect(({ body }) => {
+        expect(body.message).toBe('Phone number is required.');
+      });
 
     const response = await request(app.getHttpServer())
       .post('/api/auth/register')
@@ -1678,6 +1728,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
 
     expect(response.body.user).toMatchObject({
       email: 'auto-contestant@example.com',
+      phone: '08000000001',
       role: UserRole.CONTESTANT,
     });
     expect(response.body.contestant).toMatchObject({
@@ -1710,6 +1761,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       .send({
         name: 'No Competition User',
         email: 'no-competition@example.com',
+        phone: '08000000005',
         password: 'password123',
         displayName: 'No Competition',
       })
@@ -1825,6 +1877,115 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       .get(`/api/competitions/${contestant.competitionId}/leaderboard`)
       .expect(200);
     expect(leaderboardResponse.body).toEqual([]);
+  });
+
+  it('resets competition vote counters without deleting contestants, users, or submissions', async () => {
+    const adminAuth = await registerUser('reset-votes-admin@example.com');
+    users[0].role = UserRole.ADMIN;
+    const contestantAuth = await registerUser('reset-votes-star@example.com');
+    const contestant = contestants.find(
+      (item) => item.userId === contestantAuth.body.user.id,
+    )!;
+    contestant.totalVotes = 12;
+
+    const stage = {
+      id: `stage-${stages.length + 1}`,
+      title: 'Vote Reset Stage',
+      stageNumber: 1,
+      competitionId: contestant.competitionId,
+      status: StageStatus.ACTIVE,
+      submissionStartDate: null,
+      submissionEndDate: null,
+      votingStartDate: null,
+      votingEndDate: null,
+      eliminationPercentage: 30,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    stages.push(stage);
+    submissions.push({
+      id: `submission-${submissions.length + 1}`,
+      contestantId: contestant.id,
+      stageId: stage.id,
+      title: 'Votes Video',
+      description: null,
+      videoUrl: 'https://example.com/votes.mp4',
+      uploadUrl: null,
+      status: SubmissionStatus.APPROVED,
+      youtubeUrl: null,
+      tiktokUrl: null,
+      facebookUrl: null,
+      instagramUrl: null,
+      externalVideoUrl: null,
+      thumbnailUrl: null,
+      cloudinaryPublicId: null,
+      cloudinarySecureUrl: null,
+      uploadedFileMeta: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    manualVotePayments.push({
+      id: 'manual-vote-reset',
+      contestantId: contestant.id,
+      competitionId: contestant.competitionId,
+      contestantCode: contestant.contestantCode,
+      voterName: 'Approved Voter',
+      voterPhone: '08000000009',
+      voterEmail: null,
+      amountPaid: 5000,
+      votePriceNaira: 500,
+      votesCalculated: 10,
+      transferReference: null,
+      paymentNarration: contestant.contestantCode,
+      proofImageUrl: null,
+      note: null,
+      status: ManualVotePaymentStatus.APPROVED,
+      adminNote: null,
+      verifiedAt: new Date(),
+      verifiedById: users[0].id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    votes.push({
+      id: 'vote-reset-1',
+      userId: contestant.userId,
+      contestantId: contestant.id,
+      stageId: stage.id,
+      competitionId: contestant.competitionId,
+      source: 'COIN',
+      quantity: 2,
+      createdAt: new Date(),
+    });
+
+    const resetVotesResponse = await request(app.getHttpServer())
+      .post(`/api/admin/competitions/${contestant.competitionId}/reset-votes`)
+      .set('Authorization', `Bearer ${adminAuth.body.token}`)
+      .expect(201);
+
+    expect(resetVotesResponse.body).toMatchObject({
+      competitionId: contestant.competitionId,
+      contestantsReset: 2,
+      manualVotePaymentsRejected: 1,
+      legacyVoteRecordsReset: 1,
+      usersDeleted: false,
+      contestantsDeleted: false,
+      submissionsDeleted: false,
+    });
+    expect(contestant.totalVotes).toBe(0);
+    expect(manualVotePayments[0]).toMatchObject({
+      status: ManualVotePaymentStatus.REJECTED,
+      verifiedAt: null,
+      verifiedById: null,
+    });
+    expect(votes).toHaveLength(0);
+    expect(contestants).toHaveLength(2);
+    expect(users).toHaveLength(2);
+    expect(submissions).toHaveLength(1);
+    expect(adminAuditLogs.at(-1)).toMatchObject({
+      action: 'COMPETITION_VOTES_RESET',
+      entity: 'Competition',
+      entityId: contestant.competitionId,
+    });
   });
 
   it('supports admin-managed sponsored ads and public tracking', async () => {
@@ -2002,6 +2163,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
         slug: 'manual-vote-talent',
         status: CompetitionStatus.PUBLISHED,
         manualVotingEnabled: true,
+        votingEnabled: false,
+        votingStartsAt: '2099-01-01T00:00:00.000Z',
+        votingEndsAt: '2099-02-01T00:00:00.000Z',
         votePriceNaira: 500,
         paymentBankName: 'Novo Bank',
         paymentAccountName: 'NovoRivera Votes',
@@ -2041,13 +2205,35 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       accountNumber: '1234567890',
       paymentInstructions: 'Transfer and include contestant code.',
       requiredNarration: contestantResponse.body.contestantCode,
+      votingOpen: false,
+      votingStatusMessage: 'Voting has not started yet.',
+      votingStartsAt: '2099-01-01T00:00:00.000Z',
+      votingEndsAt: '2099-02-01T00:00:00.000Z',
     });
+
+    await request(app.getHttpServer())
+      .post('/api/public-votes')
+      .send({
+        contestantCode: contestantResponse.body.contestantCode,
+        competitionId: competitionResponse.body.id,
+        voterName: 'Early Voter',
+        voterPhone: '08000000003',
+        amountPaid: 500,
+        paymentNarration: contestantResponse.body.contestantCode,
+      })
+      .expect(400)
+      .expect(({ body }) => {
+        expect(body.message).toBe('Voting has not started yet.');
+      });
 
     const updatedCompetitionResponse = await request(app.getHttpServer())
       .patch(`/api/competitions/${competitionResponse.body.id}`)
       .set('Authorization', `Bearer ${adminAuth.body.token}`)
       .send({
         manualVotingEnabled: true,
+        votingEnabled: true,
+        votingStartsAt: '2020-01-01T00:00:00.000Z',
+        votingEndsAt: '2099-01-01T00:00:00.000Z',
         paymentBankName: 'Updated Bank',
         paymentAccountName: 'Updated Votes Account',
         paymentAccountNumber: '9990001112',
@@ -2062,6 +2248,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       paymentAccountName: 'Updated Votes Account',
       paymentAccountNumber: '9990001112',
       paymentInstructions: 'Use your contestant code as narration.',
+      votingEnabled: true,
+      votingStartsAt: '2020-01-01T00:00:00.000Z',
+      votingEndsAt: '2099-01-01T00:00:00.000Z',
     });
 
     const publicCompetitionResponse = await request(app.getHttpServer())
@@ -2074,6 +2263,9 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       paymentAccountName: 'Updated Votes Account',
       paymentAccountNumber: '9990001112',
       paymentInstructions: 'Use your contestant code as narration.',
+      votingEnabled: true,
+      votingStartsAt: '2020-01-01T00:00:00.000Z',
+      votingEndsAt: '2099-01-01T00:00:00.000Z',
     });
 
     const updatedVoteInfoResponse = await request(app.getHttpServer())
@@ -2087,6 +2279,10 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       accountName: 'Updated Votes Account',
       accountNumber: '9990001112',
       paymentInstructions: 'Use your contestant code as narration.',
+      votingOpen: true,
+      votingStatusMessage: 'Voting is open.',
+      votingStartsAt: '2020-01-01T00:00:00.000Z',
+      votingEndsAt: '2099-01-01T00:00:00.000Z',
     });
 
     const pendingVoteResponse = await request(app.getHttpServer())
@@ -2517,13 +2713,19 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       adminListResponse.body.find(
         (item: { id: string }) => item.id === contestantResponse.body.id,
       ),
-    ).toMatchObject(photoPayload);
+    ).toMatchObject({
+      ...photoPayload,
+      user: expect.objectContaining({ phone: '08000000000' }),
+    });
 
     const adminDetailResponse = await request(app.getHttpServer())
       .get(`/api/admin/contestants/${contestantResponse.body.id}`)
       .set('Authorization', `Bearer ${adminAuth.body.token}`)
       .expect(200);
-    expect(adminDetailResponse.body).toMatchObject(photoPayload);
+    expect(adminDetailResponse.body).toMatchObject({
+      ...photoPayload,
+      user: expect.objectContaining({ phone: '08000000000' }),
+    });
   });
 
   it('forbids normal users from admin wallet endpoints', async () => {

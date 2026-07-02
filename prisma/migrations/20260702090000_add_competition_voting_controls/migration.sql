@@ -1,0 +1,4 @@
+ALTER TABLE "Competition"
+ADD COLUMN "votingEnabled" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN "votingStartsAt" TIMESTAMP(3),
+ADD COLUMN "votingEndsAt" TIMESTAMP(3);

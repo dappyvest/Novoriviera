@@ -28,6 +28,12 @@ export class AuthService {
   ) {}
 
   async register(registerDto: RegisterDto) {
+    const phone =
+      typeof registerDto.phone === 'string' ? registerDto.phone.trim() : '';
+    if (!phone) {
+      throw new BadRequestException('Phone number is required.');
+    }
+
     const email = registerDto.email.toLowerCase();
     const existingUser = await this.prisma.user.findUnique({
       where: { email },
@@ -51,7 +57,7 @@ export class AuthService {
           data: {
             name: registerDto.name,
             email,
-            phone: registerDto.phone,
+            phone,
             passwordHash,
             role: UserRole.CONTESTANT,
           },

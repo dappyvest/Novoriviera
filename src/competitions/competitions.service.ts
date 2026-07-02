@@ -446,8 +446,10 @@ export class CompetitionsService {
   private mapCompetitionData(dto: CreateCompetitionDto | UpdateCompetitionDto) {
     return {
       ...dto,
-      startDate: dto.startDate ? new Date(dto.startDate) : undefined,
-      endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+      startDate: this.toOptionalDate(dto.startDate),
+      endDate: this.toOptionalDate(dto.endDate),
+      votingStartsAt: this.toOptionalDate(dto.votingStartsAt),
+      votingEndsAt: this.toOptionalDate(dto.votingEndsAt),
     };
   }
 
@@ -469,6 +471,9 @@ export class CompetitionsService {
       rules: dto.rules,
       ownerId,
       manualVotingEnabled: dto.manualVotingEnabled,
+      votingEnabled: dto.votingEnabled,
+      votingStartsAt: this.toOptionalDate(dto.votingStartsAt),
+      votingEndsAt: this.toOptionalDate(dto.votingEndsAt),
       votePriceNaira: dto.votePriceNaira,
       paymentBankName: dto.paymentBankName,
       paymentAccountName: dto.paymentAccountName,
@@ -492,6 +497,14 @@ export class CompetitionsService {
       paymentAccountNumber: undefined,
       paymentInstructions: undefined,
     };
+  }
+
+  private toOptionalDate(value?: string | null) {
+    if (value === undefined) {
+      return undefined;
+    }
+
+    return value === null ? null : new Date(value);
   }
 
   private isUniqueConstraintError(error: unknown) {

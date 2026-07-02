@@ -15,6 +15,7 @@ import { CreateContestantDto } from './dto/create-contestant.dto';
 import { UpdateEngagementDto } from './dto/update-engagement.dto';
 import { UpdateContestantPremiumDto } from './dto/update-contestant-premium.dto';
 import { UpdateContestantPhotoDto } from './dto/update-contestant-photo.dto';
+import { getVotingWindowStatus } from '../competitions/voting-window.util';
 
 const publicContestantBlockedStatuses = [
   ContestantStatus.REJECTED,
@@ -166,6 +167,9 @@ export class ContestantsService {
         bannerUrl: contestant.competition.bannerUrl,
       },
       votePriceNaira: contestant.competition.votePriceNaira,
+      ...getVotingWindowStatus(contestant.competition),
+      votingStartsAt: contestant.competition.votingStartsAt,
+      votingEndsAt: contestant.competition.votingEndsAt,
       bankName: contestant.competition.paymentBankName,
       accountName: contestant.competition.paymentAccountName,
       accountNumber: contestant.competition.paymentAccountNumber,

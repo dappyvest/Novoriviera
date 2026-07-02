@@ -58,6 +58,18 @@ export class UpdateCompetitionDto {
   @IsOptional()
   manualVotingEnabled?: boolean;
 
+  @IsBoolean()
+  @IsOptional()
+  votingEnabled?: boolean;
+
+  @IsISO8601()
+  @IsOptional()
+  votingStartsAt?: string | null;
+
+  @IsISO8601()
+  @IsOptional()
+  votingEndsAt?: string | null;
+
   @IsInt()
   @Min(1)
   @IsOptional()
