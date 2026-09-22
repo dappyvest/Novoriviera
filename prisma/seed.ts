@@ -100,13 +100,13 @@ async function seedCmsDefaults() {
       heroTitle:
         'NOVO RIVIERA PRESENTS THE NEXT VIRAL SUPERSTAR COMPETITION!',
       heroSubtitle:
-        'Registration starts 21 June 2026 and ends 21 July 2026. A ₦1,000,000 grand prize pool is available: 1st ₦500,000, 2nd ₦350,000, 3rd ₦150,000.',
+        'Registration starts 21 June 2026 and ends 21 July 2026. TikTok-only competition with a \u20a63,000,000 prize pool: Winner \u20a61,500,000, 1st runner-up \u20a61,000,000, 2nd runner-up \u20a6500,000.',
       primaryCtaText: 'Register Now',
       primaryCtaUrl: '/register',
       secondaryCtaText: 'View Competitions',
       secondaryCtaUrl: '/competitions',
       announcementText:
-        'Registration starts 21 June 2026 and ends 21 July 2026.',
+        'TikTok-only competition. Total prize pool: \u20a63,000,000.',
       announcementIsActive: true,
     },
     create: {
@@ -114,13 +114,13 @@ async function seedCmsDefaults() {
       heroTitle:
         'NOVO RIVIERA PRESENTS THE NEXT VIRAL SUPERSTAR COMPETITION!',
       heroSubtitle:
-        'Registration starts 21 June 2026 and ends 21 July 2026. A ₦1,000,000 grand prize pool is available: 1st ₦500,000, 2nd ₦350,000, 3rd ₦150,000.',
+        'Registration starts 21 June 2026 and ends 21 July 2026. TikTok-only competition with a \u20a63,000,000 prize pool: Winner \u20a61,500,000, 1st runner-up \u20a61,000,000, 2nd runner-up \u20a6500,000.',
       primaryCtaText: 'Register Now',
       primaryCtaUrl: '/register',
       secondaryCtaText: 'View Competitions',
       secondaryCtaUrl: '/competitions',
       announcementText:
-        'Registration starts 21 June 2026 and ends 21 July 2026.',
+        'TikTok-only competition. Total prize pool: \u20a63,000,000.',
       announcementIsActive: true,
     },
   });
@@ -130,14 +130,14 @@ async function seedCmsDefaults() {
     update: {
       title: 'Official Winning Criteria',
       content:
-        'Winners are selected by 50% Online Engagement and 50% Voting Token Volume. Fraud, bot activity, vote manipulation, tampering, or any attempt to undermine the competition can result in disqualification. Participation confirms acceptance of all competition rules and organizer decisions.',
+        'Winners are selected by 50% TikTok engagement and 50% voting token volume. Fraud, bot activity, vote manipulation, tampering, or any attempt to undermine the competition can result in disqualification. Participation confirms acceptance of all competition rules and organizer decisions.',
       isActive: true,
     },
     create: {
       singletonKey: 'default',
       title: 'Official Winning Criteria',
       content:
-        'Winners are selected by 50% Online Engagement and 50% Voting Token Volume. Fraud, bot activity, vote manipulation, tampering, or any attempt to undermine the competition can result in disqualification. Participation confirms acceptance of all competition rules and organizer decisions.',
+        'Winners are selected by 50% TikTok engagement and 50% voting token volume. Fraud, bot activity, vote manipulation, tampering, or any attempt to undermine the competition can result in disqualification. Participation confirms acceptance of all competition rules and organizer decisions.',
       isActive: true,
     },
   });
@@ -160,8 +160,13 @@ async function seedDemoData() {
       prizeFirst: '\u20a61,500,000',
       prizeSecond: '\u20a61,000,000',
       prizeThird: '\u20a6500,000',
+      paymentBankName: 'Access Bank',
+      paymentAccountName: 'Novo Riviera Enterprise',
+      paymentAccountNumber: '1824826876',
+      paymentInstructions:
+        'Transfer the exact amount and use the generated payment reference as the narration.',
       rules:
-        'Winning criteria: 50% Online Engagement and 50% Voting Token Volume. Fraud, bots, vote manipulation, or tampering may lead to disqualification.',
+        'Winning criteria: 50% TikTok engagement and 50% voting token volume. Fraud, bots, vote manipulation, or tampering may lead to disqualification.',
     },
     create: {
       title: 'The Next Viral Superstar Competition',
@@ -174,8 +179,13 @@ async function seedDemoData() {
       prizeFirst: '\u20a61,500,000',
       prizeSecond: '\u20a61,000,000',
       prizeThird: '\u20a6500,000',
+      paymentBankName: 'Access Bank',
+      paymentAccountName: 'Novo Riviera Enterprise',
+      paymentAccountNumber: '1824826876',
+      paymentInstructions:
+        'Transfer the exact amount and use the generated payment reference as the narration.',
       rules:
-        'Winning criteria: 50% Online Engagement and 50% Voting Token Volume. Fraud, bots, vote manipulation, or tampering may lead to disqualification.',
+        'Winning criteria: 50% TikTok engagement and 50% voting token volume. Fraud, bots, vote manipulation, or tampering may lead to disqualification.',
     },
   });
 
@@ -238,8 +248,8 @@ async function seedDemoData() {
     1,
   );
   await upsertFaq(
-    'Can I submit TikTok or Facebook links?',
-    'Yes. Admins can attach TikTok, Facebook, Instagram, YouTube, and external video links to approved submissions.',
+    'Can I submit a TikTok link?',
+    'Yes. TikTok is the supported creator video platform for this competition.',
     2,
   );
   await upsertFaq(
