@@ -153,13 +153,13 @@ async function seedDemoData() {
     update: {
       title: 'The Next Viral Superstar Competition',
       description:
-        'NovoRivera online competition for viral creators across TikTok, Facebook, Instagram, and YouTube.',
+        'NovoRivera online competition for viral creators on TikTok.',
       status: CompetitionStatus.ACTIVE,
       startDate: new Date('2026-06-21T00:00:00.000Z'),
       endDate: new Date('2026-07-21T23:59:59.000Z'),
-      prizeFirst: '\u20a6500,000',
-      prizeSecond: '\u20a6350,000',
-      prizeThird: '\u20a6150,000',
+      prizeFirst: '\u20a61,500,000',
+      prizeSecond: '\u20a61,000,000',
+      prizeThird: '\u20a6500,000',
       rules:
         'Winning criteria: 50% Online Engagement and 50% Voting Token Volume. Fraud, bots, vote manipulation, or tampering may lead to disqualification.',
     },
@@ -167,13 +167,13 @@ async function seedDemoData() {
       title: 'The Next Viral Superstar Competition',
       slug: 'next-viral-superstar-2026',
       description:
-        'NovoRivera online competition for viral creators across TikTok, Facebook, Instagram, and YouTube.',
+        'NovoRivera online competition for viral creators on TikTok.',
       status: CompetitionStatus.ACTIVE,
       startDate: new Date('2026-06-21T00:00:00.000Z'),
       endDate: new Date('2026-07-21T23:59:59.000Z'),
-      prizeFirst: '\u20a6500,000',
-      prizeSecond: '\u20a6350,000',
-      prizeThird: '\u20a6150,000',
+      prizeFirst: '\u20a61,500,000',
+      prizeSecond: '\u20a61,000,000',
+      prizeThird: '\u20a6500,000',
       rules:
         'Winning criteria: 50% Online Engagement and 50% Voting Token Volume. Fraud, bots, vote manipulation, or tampering may lead to disqualification.',
     },

@@ -313,7 +313,6 @@ export class CompetitionsService {
           externalVideoUrl: latestSubmission?.externalVideoUrl ?? null,
           youtubeUrl: latestSubmission?.youtubeUrl ?? null,
           tiktokUrl: latestSubmission?.tiktokUrl ?? null,
-          facebookUrl: latestSubmission?.facebookUrl ?? null,
           thumbnailUrl: latestSubmission?.thumbnailUrl ?? null,
           latestVideoUrl: latestSubmission?.videoUrl ?? null,
           latestUploadUrl: latestSubmission?.uploadUrl ?? null,
@@ -321,7 +320,6 @@ export class CompetitionsService {
             latestSubmission?.cloudinarySecureUrl ?? null,
           latestExternalVideoUrl: latestSubmission?.externalVideoUrl ?? null,
           latestTiktokUrl: latestSubmission?.tiktokUrl ?? null,
-          latestFacebookUrl: latestSubmission?.facebookUrl ?? null,
           latestYoutubeUrl: latestSubmission?.youtubeUrl ?? null,
           latestThumbnailUrl: latestSubmission?.thumbnailUrl ?? null,
           latestSubmission: latestSubmission
@@ -334,7 +332,6 @@ export class CompetitionsService {
                 cloudinarySecureUrl: latestSubmission.cloudinarySecureUrl,
                 externalVideoUrl: latestSubmission.externalVideoUrl,
                 tiktokUrl: latestSubmission.tiktokUrl,
-                facebookUrl: latestSubmission.facebookUrl,
                 youtubeUrl: latestSubmission.youtubeUrl,
                 thumbnailUrl: latestSubmission.thumbnailUrl,
                 createdAt: latestSubmission.createdAt,

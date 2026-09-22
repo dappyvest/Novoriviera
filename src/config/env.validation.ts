@@ -52,6 +52,29 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   APP_FRONTEND_URL?: string;
+  @IsString()
+  @IsOptional()
+  MANUAL_BANK_TRANSFER_VOTING_ENABLED = 'true';
+
+  @IsString()
+  @IsOptional()
+  PAYSTACK_VOTING_ENABLED = 'false';
+
+  @IsString()
+  @IsOptional()
+  VOTING_BANK_NAME = 'Access Bank';
+
+  @IsString()
+  @IsOptional()
+  VOTING_BANK_ACCOUNT_NUMBER = '1824826876';
+
+  @IsString()
+  @IsOptional()
+  VOTING_BANK_ACCOUNT_NAME = 'Novo Riviera Enterprise';
+
+  @IsString()
+  @IsOptional()
+  VOTING_PAYMENT_INSTRUCTIONS = 'Transfer the exact amount and use the payment reference as the narration.';
 
   @IsString()
   @IsOptional()

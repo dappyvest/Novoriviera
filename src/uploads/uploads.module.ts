@@ -7,8 +7,10 @@ import {
   VideoUploadLoggingInterceptor,
 } from './uploads.controller';
 import { UploadsService } from './uploads.service';
+import { PublicVotesModule } from '../public-votes/public-votes.module';
 
 @Module({
+  imports: [PublicVotesModule],
   controllers: [UploadsController],
   providers: [
     UploadsService,

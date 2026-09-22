@@ -13,9 +13,6 @@ export class UpdateSubmissionYoutubeDto {
   @IsOptional()
   tiktokUrl?: string;
 
-  @IsString()
-  @IsOptional()
-  facebookUrl?: string;
 
   @IsString()
   @IsOptional()

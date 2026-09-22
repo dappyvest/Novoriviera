@@ -1,9 +1,8 @@
-import { ManualVotePaymentStatus } from '@prisma/client';
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsString } from 'class-validator';
 
 export class UpdatePublicVoteStatusDto {
-  @IsEnum(ManualVotePaymentStatus)
-  status!: ManualVotePaymentStatus;
+  @IsString()
+  status!: 'CONFIRMED' | 'REJECTED';
 
   @IsString()
   @IsOptional()

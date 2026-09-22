@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   CallHandler,
   Controller,
   ExecutionContext,
@@ -20,6 +21,7 @@ import { tmpdir } from 'os';
 import { Observable, catchError, throwError } from 'rxjs';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UploadsService } from './uploads.service';
+import { PublicVotesService } from '../public-votes/public-votes.service';
 
 type UploadedMultipartFile = {
   buffer?: Buffer;
@@ -202,7 +204,7 @@ export class PaymentProofUploadInterceptor implements NestInterceptor {
 export class UploadsController {
   private readonly logger = new Logger(UploadsController.name);
 
-  constructor(private readonly uploadsService: UploadsService) {}
+  constructor(private readonly uploadsService: UploadsService, private readonly publicVotesService: PublicVotesService) {}
 
   @Post('video')
   @UseGuards(JwtAuthGuard)
@@ -348,13 +350,18 @@ export class UploadsController {
       },
     }),
   )
-  uploadPaymentProof(
+  async uploadPaymentProof(
     @UploadedFile() file: UploadedMultipartFile | undefined,
+    @Body('paymentReference') paymentReference?: string,
   ) {
     if (file && !file.buffer) {
       throw new BadRequestException('Invalid payment proof upload');
     }
-
-    return this.uploadsService.uploadPaymentProof(file);
+    if (!paymentReference) {
+      throw new BadRequestException('paymentReference is required to associate a proof');
+    }
+    const proof = await this.uploadsService.uploadPaymentProof(file);
+    await this.publicVotesService.attachProof(paymentReference, proof);
+    return proof;
   }
 }

@@ -25,6 +25,9 @@ export class PaymentsService {
   ) {}
 
   async initCoinPurchase(userId: string, email: string, dto: InitCoinPurchaseDto) {
+    if (this.configService.get<string>('PAYSTACK_VOTING_ENABLED', 'false').toLowerCase() !== 'true') {
+      throw new BadRequestException('Paystack voting payments are temporarily unavailable');
+    }
     const coinPackage = await this.prisma.coinPackage.findUnique({
       where: { id: dto.coinPackageId },
     });

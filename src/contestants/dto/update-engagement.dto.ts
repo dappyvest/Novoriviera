@@ -1,5 +1,5 @@
 import { EngagementPlatform } from '@prisma/client';
-import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 export class UpdateEngagementDto {
   @IsString()
@@ -36,9 +36,9 @@ export class UpdateEngagementDto {
   @IsOptional()
   watchScore?: number;
 
-  @IsEnum(EngagementPlatform)
+  @IsIn(['TIKTOK'])
   @IsOptional()
-  platform?: EngagementPlatform;
+  platform?: 'TIKTOK';
 
   @IsString()
   @IsOptional()

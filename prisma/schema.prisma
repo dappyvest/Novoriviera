@@ -112,9 +112,23 @@ enum SponsoredAdDestinationType {
 }
 
 enum ManualVotePaymentStatus {
+  INTENT_CREATED
+  SUBMITTED
+  CONFIRMED
   PENDING
   APPROVED
   REJECTED
+  CANCELLED
+}
+
+enum ManualVotePaymentEventType {
+  INTENT_CREATED
+  PROOF_ATTACHED
+  TRANSFER_SUBMITTED
+  CONFIRMED
+  REJECTED
+  CANCELLED
+  CREDIT_REVERSED
 }
 
 model CoinPackage {
@@ -150,6 +164,8 @@ model User {
   auditLogs                  AdminAuditLog[]     @relation("AdminAuditActor")
   verifiedManualVotePayments ManualVotePayment[] @relation("ManualVoteVerifier")
   coinTransactions           CoinTransaction[]
+  manualVoteCredits          ManualVoteCredit[]
+  manualVotePaymentEvents    ManualVotePaymentEvent[]
 }
 
 model Competition {
@@ -186,6 +202,7 @@ model Competition {
   payments           Payment[]
   winners            CompetitionWinner[]
   manualVotePayments ManualVotePayment[]
+  manualVoteCredits  ManualVoteCredit[]
 }
 
 model Stage {
@@ -240,12 +257,14 @@ model Contestant {
   engagementBreakdowns EngagementBreakdown[]
   winnerPlacements     CompetitionWinner[]
   manualVotePayments   ManualVotePayment[]
+  manualVoteCredits    ManualVoteCredit[]
 
   @@unique([competitionId, userId])
 }
 
 model ManualVotePayment {
   id                String                  @id @default(cuid())
+  paymentReference  String?                 @unique
   contestantCode    String
   voterName         String
   voterPhone        String
@@ -253,13 +272,25 @@ model ManualVotePayment {
   amountPaid        Int
   votePriceNaira    Int
   votesCalculated   Int
+  voteQuantity      Int?
+  expectedAmountNaira Int?
   transferReference String?
   paymentNarration  String?
   proofImageUrl     String?
+  proofPublicId     String?
+  proofMeta         Json?
   note              String?
+  bankNameSnapshot  String?
+  bankAccountNameSnapshot String?
+  bankAccountNumberSnapshot String?
+  paymentInstructionsSnapshot String?
   status            ManualVotePaymentStatus @default(PENDING)
   adminNote         String?
   verifiedAt        DateTime?
+  submittedAt       DateTime?
+  confirmedAt       DateTime?
+  rejectedAt        DateTime?
+  cancelledAt       DateTime?
   createdAt         DateTime                @default(now())
   updatedAt         DateTime                @updatedAt
 
@@ -269,10 +300,41 @@ model ManualVotePayment {
   competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
   verifiedById  String?
   verifiedBy    User?       @relation("ManualVoteVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  credit        ManualVoteCredit?
+  events        ManualVotePaymentEvent[]
 
   @@index([status, createdAt])
   @@index([competitionId, status])
   @@index([contestantCode])
+  @@index([paymentReference])
+}
+
+model ManualVoteCredit {
+  id                  String   @id @default(cuid())
+  voteQuantity        Int
+  createdAt           DateTime @default(now())
+  manualVotePaymentId String   @unique
+  manualVotePayment   ManualVotePayment @relation(fields: [manualVotePaymentId], references: [id], onDelete: Restrict)
+  contestantId        String
+  contestant          Contestant @relation(fields: [contestantId], references: [id], onDelete: Restrict)
+  competitionId       String
+  competition         Competition @relation(fields: [competitionId], references: [id], onDelete: Restrict)
+  confirmedById       String
+  confirmedBy         User @relation(fields: [confirmedById], references: [id], onDelete: Restrict)
+  @@index([contestantId])
+  @@index([competitionId])
+}
+
+model ManualVotePaymentEvent {
+  id                  String                     @id @default(cuid())
+  type                ManualVotePaymentEventType
+  metadata            Json?
+  createdAt           DateTime                   @default(now())
+  manualVotePaymentId String
+  manualVotePayment   ManualVotePayment          @relation(fields: [manualVotePaymentId], references: [id], onDelete: Cascade)
+  actorId             String?
+  actor               User?                      @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  @@index([manualVotePaymentId, createdAt])
 }
 
 model Submission {

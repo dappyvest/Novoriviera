@@ -2421,3 +2421,74 @@ Admin-auth routes:
 - Backend route params named `:id` for competition detail/update/delete are ids, not slugs.
 - Cloudinary credentials are backend-only; frontend should only use returned upload URLs/public ids.
 - Coins are internal platform credits only. There is no blockchain, cryptocurrency, withdrawal, transfer, or refund endpoint in this backend.
+
+## Production manual bank-transfer voting contract (current)
+
+Manual bank transfer is the only active voting payment mode. Do not call Paystack coin-purchase initiation unless `PAYSTACK_VOTING_ENABLED=true` is deliberately restored.
+
+### 1. Create an intent
+
+`POST /api/public-votes/intents`
+
+```json
+{ "contestantCode": "NRV-100001", "voteQuantity": 3 }
+```
+
+`contestantId` may be supplied instead of `contestantCode`. The server validates the contestant and voting window, calculates the amount, and returns a generated narration reference:
+
+```json
+{
+  "paymentReference": "NRV-A1B2C3D4E5",
+  "contestant": { "id": "...", "contestantCode": "NRV-100001", "displayName": "..." },
+  "voteQuantity": 3,
+  "expectedAmountNaira": 1500,
+  "bankName": "Access Bank",
+  "accountName": "Novo Riviera Enterprise",
+  "accountNumber": "1824826876",
+  "paymentInstructions": "Transfer the exact amount and use the payment reference as the narration.",
+  "requiredNarration": "NRV-A1B2C3D4E5"
+}
+```
+
+Never send a client-calculated payment amount or narration. The reference, price, amount, vote quantity, and bank details are snapshotted by the backend.
+
+### 2. Upload proof for that intent
+
+`POST /api/uploads/payment-proof` as `multipart/form-data` with `file` and `paymentReference`. Proof is accepted only for an unsubmitted intent and is linked by the backend; arbitrary proof URLs are not accepted.
+
+### 3. Submit transfer confirmation
+
+`POST /api/public-votes/submit`
+
+```json
+{
+  "paymentReference": "NRV-A1B2C3D4E5",
+  "voterName": "Jane Doe",
+  "voterPhone": "08000000000",
+  "voterEmail": "jane@example.com",
+  "transferReference": "ACCESS-BANK-REFERENCE",
+  "note": "Transferred from mobile app"
+}
+```
+
+A proof attached to the same intent is required. Submission creates no votes. The payment moves from `INTENT_CREATED` to `SUBMITTED`.
+
+### 4. Admin decision
+
+`PATCH /api/admin/public-votes/:id/status` requires admin auth:
+
+```json
+{ "status": "CONFIRMED", "adminNote": "Verified in Access Bank" }
+```
+
+or
+
+```json
+{ "status": "REJECTED", "adminNote": "Bank transfer could not be verified" }
+```
+
+Only `SUBMITTED -> CONFIRMED` and `SUBMITTED -> REJECTED` are permitted. Confirmation atomically creates the unique payment credit ledger row and increments the contestant exactly once. Repeated/concurrent confirmation cannot add votes twice. There is no generic confirmed-payment reversal endpoint.
+
+### TikTok-only creator engagement
+
+New submission link updates and engagement updates accept TikTok only. Facebook video URLs and Facebook engagement metrics are historical fields and are no longer part of active API contracts.
