@@ -209,6 +209,7 @@ type MockSiteSettings = {
   aboutContent: string;
   contactEmail: string;
   contactPhone: string;
+  lagosOfficeAddress: string | null;
   whatsappNumber: string;
   facebookUrl: string;
   instagramUrl: string;
@@ -1292,6 +1293,7 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
           aboutContent: data.aboutContent,
           contactEmail: data.contactEmail,
           contactPhone: data.contactPhone,
+          lagosOfficeAddress: data.lagosOfficeAddress ?? null,
           whatsappNumber: data.whatsappNumber,
           facebookUrl: data.facebookUrl,
           instagramUrl: data.instagramUrl,
@@ -3295,12 +3297,14 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
       .send({
         siteName: 'NovoRivera Global',
         contactEmail: 'support@novorivera.com',
+        lagosOfficeAddress: 'Adebola House, 38 Opebi Road, Ikeja, Lagos',
       })
       .expect(200);
 
     expect(updatedSettingsResponse.body).toMatchObject({
       siteName: 'NovoRivera Global',
       contactEmail: 'support@novorivera.com',
+      lagosOfficeAddress: 'Adebola House, 38 Opebi Road, Ikeja, Lagos',
     });
 
     await request(app.getHttpServer())

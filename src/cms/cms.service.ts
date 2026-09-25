@@ -31,6 +31,7 @@ export class CmsService {
           aboutContent: 'NovoRivera helps competitions run online.',
           contactEmail: 'hello@novorivera.com',
           contactPhone: '',
+          lagosOfficeAddress: null,
           whatsappNumber: '',
           facebookUrl: '',
           instagramUrl: '',

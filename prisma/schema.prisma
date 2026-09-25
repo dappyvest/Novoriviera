@@ -491,6 +491,7 @@ model SiteSettings {
   aboutContent   String
   contactEmail   String
   contactPhone   String
+  lagosOfficeAddress String?
   whatsappNumber String
   facebookUrl    String
   instagramUrl   String

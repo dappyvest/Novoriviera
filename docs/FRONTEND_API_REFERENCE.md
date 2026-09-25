@@ -61,7 +61,14 @@ type LeaderboardMode = "votes" | "engagement" | "combined";
 type SponsoredAdPlacement = "HOME_TOP" | "HOME_MIDDLE" | "LEADERBOARD" | "COMPETITION_PAGE" | "CONTESTANT_PAGE" | "VOTE_PAGE";
 type SponsoredAdStatus = "DRAFT" | "ACTIVE" | "PAUSED" | "EXPIRED";
 type SponsoredAdDestinationType = "WEBSITE" | "WHATSAPP" | "FACEBOOK" | "INSTAGRAM" | "TIKTOK" | "YOUTUBE" | "OTHER";
-type ManualVotePaymentStatus = "PENDING" | "APPROVED" | "REJECTED";
+type ManualVotePaymentStatus =
+  | "INTENT_CREATED"
+  | "SUBMITTED"
+  | "CONFIRMED"
+  | "PENDING" // legacy database value; not produced by the current flow
+  | "APPROVED" // legacy database value; not produced by the current flow
+  | "REJECTED"
+  | "CANCELLED"; // no cancellation endpoint is implemented
 ```
 
 ### Error Response Format
@@ -318,6 +325,7 @@ export interface SiteSettings {
   aboutContent: string;
   contactEmail: string;
   contactPhone: string;
+  lagosOfficeAddress: string | null;
   whatsappNumber: string;
   facebookUrl: string;
   instagramUrl: string;
@@ -397,6 +405,7 @@ export interface SponsoredAd {
 
 export interface ManualVotePayment {
   id: string;
+  paymentReference: string | null;
   contestantId: string;
   competitionId: string;
   contestantCode: string;
@@ -406,13 +415,25 @@ export interface ManualVotePayment {
   amountPaid: number;
   votePriceNaira: number;
   votesCalculated: number;
+  voteQuantity: number | null;
+  expectedAmountNaira: number | null;
   transferReference: string | null;
   paymentNarration: string | null;
   proofImageUrl: string | null;
+  proofPublicId: string | null;
+  proofMeta: JsonValue | null;
   note: string | null;
+  bankNameSnapshot: string | null;
+  bankAccountNameSnapshot: string | null;
+  bankAccountNumberSnapshot: string | null;
+  paymentInstructionsSnapshot: string | null;
   status: ManualVotePaymentStatus;
   adminNote: string | null;
   verifiedAt: string | null;
+  submittedAt: string | null;
+  confirmedAt: string | null;
+  rejectedAt: string | null;
+  cancelledAt: string | null;
   verifiedById: string | null;
   createdAt: string;
   updatedAt: string;
@@ -694,6 +715,7 @@ Success examples:
   "aboutContent": "NovoRivera helps competitions run online.",
   "contactEmail": "hello@novorivera.com",
   "contactPhone": "",
+  "lagosOfficeAddress": null,
   "whatsappNumber": "",
   "facebookUrl": "",
   "instagramUrl": "",
@@ -805,155 +827,270 @@ Use the image response `secureUrl` and `publicId` with the contestant photo upda
 
 Use `POST /api/uploads/registration-image` and `POST /api/uploads/registration-video` before `POST /api/auth/register` when the new-user form uploads media before authentication. Send the returned `secureUrl` as `photoUrl`, `videoUrl`, `uploadUrl`, or `cloudinarySecureUrl` as appropriate, and keep Cloudinary credentials out of the frontend.
 
-Use `POST /api/uploads/payment-proof` before `POST /api/public-votes` when the voter chooses a proof image. Send the returned `secureUrl` as `proofImageUrl`. This endpoint is intentionally public because voters do not register or log in.
+Payment-proof voting is an intent-based flow. `POST /api/uploads/payment-proof` is public and must receive `file` plus `paymentReference`; it associates the uploaded proof server-side. Do not put its `secureUrl` in a public-vote JSON payload. The authoritative request and response contract is in **Manual Public Voting** below.
 
 Common errors: `400` missing file or unsupported/invalid format, `401` for auth-required upload routes, `413` file too large, `502` Cloudinary upload failure, `503` Cloudinary not configured. All application errors are JSON responses.
 
-### Manual Public Voting
+### Manual Public Voting (Authoritative Current Contract)
 
-Manual transfer voting is the primary public voter flow. Voters do not register or log in. Contestants share their public profile link or contestant code, voters transfer to the configured bank account with the contestant code in the narration, then submit payment proof for admin review. The old wallet/coin endpoints still exist for future use.
+All paths below include the global `/api` prefix. This is a public, manual-bank-transfer workflow; no voter account is required. The only supported client sequence is:
 
-| Method | Path | Auth | Roles |
+1. Read vote info.
+2. Create an intent.
+3. Transfer the exact amount using the returned `paymentReference` as narration.
+4. Upload proof, associating it to that same reference.
+5. Submit payer details.
+6. An `ADMIN` or `SUPER_ADMIN` confirms or rejects it.
+
+Do not use the historical amount-based payload. `POST /api/public-votes` remains supported only as an alias for the same current submission DTO as `/submit`.
+
+```ts
+type ManualVotePaymentStatus =
+  | "INTENT_CREATED"
+  | "SUBMITTED"
+  | "CONFIRMED"
+  | "PENDING" // legacy database enum; current routes never create it
+  | "APPROVED" // legacy database enum; current routes never create it
+  | "REJECTED"
+  | "CANCELLED"; // no route transitions to it
+
+type ManualVotePaymentEventType =
+  | "INTENT_CREATED"
+  | "PROOF_ATTACHED"
+  | "TRANSFER_SUBMITTED"
+  | "CONFIRMED"
+  | "REJECTED"
+  | "CANCELLED"
+  | "CREDIT_REVERSED";
+
+type IsoDate = string;
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+```
+
+| Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/contestants/code/:contestantCode` | Public | None |
-| `GET` | `/api/contestants/code/:contestantCode/vote-info` | Public | None |
-| `POST` | `/api/public-votes` | Public | None |
-| `GET` | `/api/admin/public-votes` | Required | `ADMIN`, `SUPER_ADMIN` |
-| `GET` | `/api/admin/public-votes/:id` | Required | `ADMIN`, `SUPER_ADMIN` |
-| `PATCH` | `/api/admin/public-votes/:id/status` | Required | `ADMIN`, `SUPER_ADMIN` |
+| `GET` | `/api/contestants/code/:contestantCode/vote-info` | Public | Display contestant, price, bank and voting-window information. |
+| `POST` | `/api/public-votes/intents` | Public | Create a reference and amount snapshot. |
+| `POST` | `/api/uploads/payment-proof` | Public multipart | Upload and attach proof to an unsubmitted intent. |
+| `POST` | `/api/public-votes/submit` | Public | Submit an intent after proof is attached. |
+| `POST` | `/api/public-votes` | Public | Supported legacy path; exactly the same handler and DTO as `/submit`. |
+| `GET` | `/api/admin/public-votes` | Bearer JWT | List manual vote payments. `ADMIN`/`SUPER_ADMIN` only. |
+| `GET` | `/api/admin/public-votes/:id` | Bearer JWT | Read one payment. `ADMIN`/`SUPER_ADMIN` only. |
+| `PATCH` | `/api/admin/public-votes/:id/status` | Bearer JWT | Confirm or reject. `ADMIN`/`SUPER_ADMIN` only. |
 
-Contestant codes are generated automatically on contestant registration and look like `NRV-100001`. `contestantCode` is returned in contestant profiles, leaderboard rows, admin contestant responses, and contestant dashboard responses.
+#### Vote info
 
 `GET /api/contestants/code/:contestantCode/vote-info`
 
-Success:
-
-```json
-{
-  "contestant": {
-    "id": "contestant-id",
-    "contestantCode": "NRV-100001",
-    "displayName": "Ada Star",
-    "photoUrl": "https://example.com/photo.jpg",
-    "status": "APPROVED"
-  },
-  "competition": {
-    "id": "competition-id",
-    "title": "Novo Talent 2026",
-    "slug": "novo-talent-2026",
-    "bannerUrl": "https://example.com/banner.jpg"
-  },
-  "votePriceNaira": 500,
-  "bankName": "Novo Bank",
-  "accountName": "NovoRivera Votes",
-  "accountNumber": "1234567890",
-  "paymentInstructions": "Transfer and include contestant code.",
-  "votingOpen": true,
-  "votingStatusMessage": "Voting is open.",
-  "votingStartsAt": "2026-07-01T00:00:00.000Z",
-  "votingEndsAt": "2026-08-01T00:00:00.000Z",
-  "requiredNarration": "NRV-100001",
-  "contestantCode": "NRV-100001"
+```ts
+interface VoteInfoResponse {
+  contestant: {
+    id: string;
+    contestantCode: string;
+    displayName: string;
+    photoUrl: string | null;
+    status: "PENDING" | "APPROVED" | "REJECTED" | "ELIMINATED";
+  };
+  competition: { id: string; title: string; slug: string; bannerUrl: string | null };
+  votePriceNaira: number;
+  votingOpen: boolean;
+  votingStatusMessage:
+    | "Manual voting is not enabled."
+    | "Voting has not started yet."
+    | "Voting has ended."
+    | "Voting is open.";
+  votingStartsAt: IsoDate | null;
+  votingEndsAt: IsoDate | null;
+  bankName: string | null;
+  accountName: string | null;
+  accountNumber: string | null;
+  paymentInstructions: string | null;
+  requiredNarration: string; // contestant code (informational only; do not use it for an intent transfer)
+  contestantCode: string;
 }
 ```
 
-`POST /api/public-votes`
+This endpoint returns `404 { message: "Vote information not found", error: "Not Found", statusCode: 404 }` when the contestant does not exist/is `REJECTED` or `ELIMINATED`, or the competition has `manualVotingEnabled=false`. It does not enforce `MANUAL_BANK_TRANSFER_VOTING_ENABLED`; the intent endpoint does. It can return `200` with `votingOpen=false`; in that state do not offer intent creation.
 
-```json
-{
-  "contestantCode": "NRV-100001",
-  "competitionId": "competition-id",
-  "voterName": "John Doe",
-  "voterPhone": "08000000000",
-  "voterEmail": "john@example.com",
-  "amountPaid": 1000,
-  "transferReference": "BANK-REF-1",
-  "paymentNarration": "NRV-100001",
-  "proofImageUrl": "https://example.com/proof.jpg",
-  "note": "Optional note"
+#### Create payment intent
+
+`POST /api/public-votes/intents` with JSON:
+
+```ts
+interface CreateManualVoteIntentRequest {
+  voteQuantity: number; // required integer, minimum 1
+  contestantCode?: string;
+  contestantId?: string;
+}
+
+interface CreateManualVoteIntentResponse {
+  paymentReference: string;
+  contestant: { id: string; contestantCode: string; displayName: string };
+  voteQuantity: number;
+  expectedAmountNaira: number; // competition.votePriceNaira * voteQuantity
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  paymentInstructions: string;
+  requiredNarration: string; // exactly paymentReference
 }
 ```
 
-Optional proof upload:
+Exactly one contestant identifier is not required: supplying both selects by `contestantCode`; supplying neither returns `400` with `Contestant code or ID is required`. `paymentReference` has the generated format `NRV-` followed by 10 uppercase hexadecimal characters, e.g. `NRV-1A2B3C4D5E`. It is the transfer narration. The response intentionally does **not** include a `status` property; it creates a database payment with lifecycle status `INTENT_CREATED`.
 
-```http
-POST /api/uploads/payment-proof
-Content-Type: multipart/form-data
+The backend snapshots the price, amount and bank details at creation: `votePriceNaira`, `voteQuantity`, `expectedAmountNaira`, `bankNameSnapshot`, `bankAccountNameSnapshot`, `bankAccountNumberSnapshot`, and `paymentInstructionsSnapshot`. Competition-specific bank values win; otherwise the server environment defaults are used. The frontend must display and transfer `expectedAmountNaira` exactly; it cannot override the price or amount.
 
-file=<jpg|jpeg|png|webp image>
+`400` is returned when manual bank transfer is globally disabled (`Manual bank-transfer voting is currently unavailable`), the contestant is ineligible, manual voting is disabled for that competition, or its voting window is closed. `404` is `Contestant not found`. A rare reference-generation collision exhaustion is `409 Unable to generate payment reference`.
+
+#### Upload payment proof
+
+`POST /api/uploads/payment-proof` is `multipart/form-data`, public, with exactly these meaningful fields:
+
+```ts
+const form = new FormData();
+form.append("file", imageFile); // required
+form.append("paymentReference", intent.paymentReference); // required, plain text
 ```
 
-Success:
+`file` is required. It must have both an allowed MIME type and extension: JPEG (`image/jpeg`, `.jpg`/`.jpeg`), PNG (`image/png`, `.png`), or WebP (`image/webp`, `.webp`). The maximum is `MAX_PAYMENT_PROOF_UPLOAD_SIZE_MB` MiB (default `5`; the configured positive integer is authoritative). The endpoint returns:
 
-```json
-{
-  "secureUrl": "https://res.cloudinary.com/cloud/image/upload/novoriviera/payment-proofs/proof.jpg",
-  "publicId": "novoriviera/payment-proofs/proof",
-  "resourceType": "image",
-  "format": "jpg",
-  "bytes": 512000
+```ts
+interface PaymentProofUploadResponse {
+  secureUrl: string;
+  publicId: string;
+  resourceType: string; // Cloudinary returns "image"
+  format: string | undefined;
+  bytes: number;
 }
 ```
 
-Send `secureUrl` as `proofImageUrl` in `POST /api/public-votes`. Do not expose Cloudinary credentials in the frontend.
+The server immediately associates `secureUrl`, `publicId`, and proof metadata `{ bytes, format }` with the payment identified by `paymentReference`, and adds a `PROOF_ATTACHED` event. The frontend must not send `secureUrl` or `publicId` again in the submission request. Proof is mandatory before submission: without both stored URL and public ID, submit returns `400 Upload payment proof for this payment reference before submission`.
 
-Rules:
+Uploading proof requires an existing `INTENT_CREATED` payment. Unknown reference is `404 Payment intent not found`; any other payment state is `400 Proof can only be attached to an unsubmitted payment intent`. Missing reference is `400 paymentReference is required to associate a proof`; missing file is `400 File is required in the multipart/form-data field named "file"`; invalid type is `400 Invalid payment proof file type. Upload a JPG, JPEG, PNG, or WebP image`; oversize is `413 Payment proof image exceeds the {configured} MB limit`. Upload-service errors are `503 Cloudinary is not configured` or `502 Payment proof upload service failed. Please try again`.
 
-- `contestantCode` must exist.
-- Contestant must belong to `competitionId`.
-- Contestant must not be `REJECTED` or `ELIMINATED`.
-- Competition `manualVotingEnabled` must be `true`.
-- Competition `votingEnabled` must be `true`.
-- If `votingStartsAt` is set, current time must be on or after it.
-- If `votingEndsAt` is set, current time must be before it.
-- `amountPaid` must be at least `votePriceNaira`.
-- `votesCalculated = floor(amountPaid / votePriceNaira)`.
-- Initial status is `PENDING`; votes are not added until admin approval.
+#### Submit payer details
 
-When the public voting window is not open, `POST /api/public-votes` returns `400` with:
+Use either supported endpoint: `POST /api/public-votes/submit` (preferred) or `POST /api/public-votes` (legacy alias). Send JSON:
 
-```json
-{
-  "message": "Voting has not started yet.",
-  "error": "Bad Request",
-  "statusCode": 400
+```ts
+interface SubmitManualVotePaymentRequest {
+  paymentReference: string; // required
+  voterName: string; // required string
+  voterPhone: string; // required string
+  voterEmail?: string; // optional, must be an email when present
+  transferReference?: string;
+  note?: string;
 }
 ```
 
-Admin list filters:
+There are no DTO maximum lengths, no non-empty validators, and no phone-format validator. `voteQuantity` has only integer + minimum-one validation; it has no maximum. Unknown JSON properties are rejected globally. All omitted required DTO fields and invalid types produce `400` Nest validation errors; empty strings pass `@IsString()`.
 
-- `status`: `PENDING`, `APPROVED`, or `REJECTED`.
-- `competitionId`.
-- `contestantCode`.
+The successful response is the following flat database payment object (no nested contestant/competition/events):
 
-Status update body:
-
-```json
-{
-  "status": "APPROVED",
-  "adminNote": "Payment confirmed"
+```ts
+interface ManualVotePaymentResponse {
+  id: string;
+  paymentReference: string | null;
+  contestantCode: string;
+  voterName: string;
+  voterPhone: string;
+  voterEmail: string | null;
+  amountPaid: number;
+  votePriceNaira: number;
+  votesCalculated: number;
+  voteQuantity: number | null;
+  expectedAmountNaira: number | null;
+  transferReference: string | null;
+  paymentNarration: string | null;
+  proofImageUrl: string | null;
+  proofPublicId: string | null;
+  proofMeta: JsonValue | null; // currently { bytes: number, format?: string }
+  note: string | null;
+  bankNameSnapshot: string | null;
+  bankAccountNameSnapshot: string | null;
+  bankAccountNumberSnapshot: string | null;
+  paymentInstructionsSnapshot: string | null;
+  status: ManualVotePaymentStatus; // success here is "SUBMITTED"
+  adminNote: string | null;
+  verifiedAt: IsoDate | null;
+  submittedAt: IsoDate | null;
+  confirmedAt: IsoDate | null;
+  rejectedAt: IsoDate | null;
+  cancelledAt: IsoDate | null;
+  createdAt: IsoDate;
+  updatedAt: IsoDate;
+  contestantId: string;
+  competitionId: string;
+  verifiedById: string | null;
 }
 ```
 
-Approving increments `Contestant.totalVotes` by `votesCalculated` once. Re-approving an already approved payment does not double-count. Rejecting a pending payment does not increment votes. Rejecting a previously approved payment subtracts the approved votes safely. Status updates are audited with `PUBLIC_VOTE_STATUS_UPDATE`.
+`404 Payment intent not found` means the reference is unknown. A status other than `INTENT_CREATED` returns `400 Payment intent has already been submitted or closed`. The sequence is atomic; a race returns `409 Payment intent was updated concurrently; retry the request`.
 
-Admin competition create/update accepts manual voting fields:
+#### Admin list, detail, confirmation and rejection
 
-```json
-{
-  "manualVotingEnabled": true,
-  "votingEnabled": true,
-  "votingStartsAt": "2026-07-01T00:00:00.000Z",
-  "votingEndsAt": "2026-08-01T00:00:00.000Z",
-  "votePriceNaira": 500,
-  "paymentBankName": "Novo Bank",
-  "paymentAccountName": "NovoRivera Votes",
-  "paymentAccountNumber": "1234567890",
-  "paymentInstructions": "Transfer and include contestant code."
+All admin routes require `Authorization: Bearer <JWT>` for a user with role `ADMIN` or `SUPER_ADMIN`; unauthenticated/insufficient-role requests are rejected by the auth/roles guards.
+
+`GET /api/admin/public-votes?status=SUBMITTED&competitionId=<id>&contestantCode=NRV-...` returns `ManualVotePaymentAdminResponse[]` (an unpaginated array sorted newest `createdAt` first). Every query parameter is optional; `status` should be a `ManualVotePaymentStatus` value. `GET /api/admin/public-votes/:id` returns one identical object or `404 Public vote payment not found`.
+
+```ts
+interface ManualVotePaymentAdminResponse extends ManualVotePaymentResponse {
+  contestant: {
+    id: string; contestantCode: string; displayName: string; bio: string | null;
+    age: number | null; location: string | null; guardianName: string | null;
+    guardianPhone: string | null; photoUrl: string | null; photoPublicId: string | null;
+    photoMeta: JsonValue | null; status: string; isPremium: boolean;
+    premiumExpiresAt: IsoDate | null; totalVotes: number; totalOnlineEngagement: number;
+    createdAt: IsoDate; updatedAt: IsoDate; userId: string | null; competitionId: string;
+  };
+  competition: {
+    id: string; title: string; slug: string; description: string | null; bannerUrl: string | null;
+    status: string; startDate: IsoDate | null; endDate: IsoDate | null;
+    prizeFirst: string | null; prizeSecond: string | null; prizeThird: string | null;
+    rules: string | null; manualVotingEnabled: boolean; votingEnabled: boolean;
+    votingStartsAt: IsoDate | null; votingEndsAt: IsoDate | null; votePriceNaira: number;
+    paymentBankName: string | null; paymentAccountName: string | null;
+    paymentAccountNumber: string | null; paymentInstructions: string | null;
+    createdAt: IsoDate; updatedAt: IsoDate; ownerId: string | null;
+  };
+  verifiedBy: {
+    id: string; name: string; email: string; phone: string | null; passwordHash: string;
+    role: string; isActive: boolean; createdAt: IsoDate; updatedAt: IsoDate;
+  } | null;
+  credit: {
+    id: string; voteQuantity: number; createdAt: IsoDate; manualVotePaymentId: string;
+    contestantId: string; competitionId: string; confirmedById: string;
+  } | null;
+  events: Array<{
+    id: string; type: ManualVotePaymentEventType; metadata: JsonValue | null;
+    createdAt: IsoDate; manualVotePaymentId: string; actorId: string | null;
+  }>;
 }
 ```
 
-Public competition detail exposes bank/payment fields only when `manualVotingEnabled` is `true`. `GET /api/contestants/code/:contestantCode/vote-info` always includes `votingOpen`, `votingStatusMessage`, `votingStartsAt`, and `votingEndsAt` when manual voting is enabled.
+This is the raw Prisma `include` response. In particular, `verifiedBy.passwordHash` is currently included by the backend; a frontend must never render, persist, or expose it. It is documented here solely because it is in the actual current response.
+
+Confirmation and rejection use one endpoint and one exact DTO:
+
+```ts
+// PATCH /api/admin/public-votes/:id/status
+interface UpdateManualVotePaymentStatusRequest {
+  status: "CONFIRMED" | "REJECTED";
+  adminNote?: string;
+}
+```
+
+The successful response is `ManualVotePaymentResponse` (flat, no includes). Permitted transitions are only `INTENT_CREATED -> SUBMITTED -> CONFIRMED` or `INTENT_CREATED -> SUBMITTED -> REJECTED`; proof attachment leaves the status at `INTENT_CREATED`. `CONFIRMED` increments the contestant total by the original `voteQuantity` once and creates one credit. Repeating `CONFIRMED` on an already confirmed payment is idempotent: it returns `200` with the existing payment and does not add votes or another credit. Repeating `REJECTED` is likewise idempotent. Any other origin state returns `400 Only submitted payments can be confirmed` or `400 Only submitted payments can be rejected`; another status string returns `400 Status must be CONFIRMED or REJECTED`; a concurrent update can return `409 Payment was updated concurrently; retry the request`.
+
+There is no public cancellation endpoint, no admin cancellation endpoint, and no cancellation/rejection-reason field separate from `adminNote`. `CANCELLED`, `cancelledAt`, and cancellation event enum values exist in the schema but are not reached by these controllers. Rejection stores the optional `adminNote` in `adminNote` and emits a `REJECTED` event. Do not assume that a rejected or confirmed payment can be reopened.
+
+#### Configuration, rate limits, and errors
+
+- `MANUAL_BANK_TRANSFER_VOTING_ENABLED=false` blocks only `POST /api/public-votes/intents`, returning `400 Manual bank-transfer voting is currently unavailable`. It does not hide vote-info or add a guard to upload/submit; frontend behavior should disable the whole flow from the intent failure.
+- `PAYSTACK_VOTING_ENABLED=false` blocks the separate authenticated `POST /api/payments/coin-purchase/init` flow with `400 Paystack voting payments are temporarily unavailable`. It does not affect manual-bank endpoints. Do not invoke Paystack for this manual flow.
+- `manualVotingEnabled=false` causes vote-info `404` and intent `400 Manual voting is not enabled`. `votingEnabled=false`, not-yet-open, or ended gives intent `400` with the computed voting-window message.
+- Each call to any public-vote intent/submit route (`/intents`, `/submit`, or `/`) shares an in-memory per-IP limit of 12 requests per rolling 60 seconds. Excess requests receive `429 Too many vote payment requests. Please try again later.` Uploads are not counted by this guard.
+- Standard Nest errors use `{ message: string | string[]; error: string; statusCode: number }`. Relevant codes are `400` validation/business state, `401` missing/invalid JWT on admin calls, `403` authenticated non-admin, `404` missing record, `409` concurrent/reference collision, `413` oversize proof, `429` rate limit, `502` Cloudinary failure, and `503` Cloudinary configuration missing.
 
 ### Sponsored Ads
 
@@ -1451,7 +1588,7 @@ Success:
   {
     "id": "winner-id",
     "placement": "FIRST",
-    "prizeAmount": "₦500,000",
+    "prizeAmount": "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦500,000",
     "totalVotes": 100,
     "totalOnlineEngagement": 150,
     "engagementScore": 50,
@@ -2293,7 +2430,8 @@ User-auth routes:
 - `GET /api/contestants/:id/votes`
 - `GET /api/contestants/code/:contestantCode`
 - `GET /api/contestants/code/:contestantCode/vote-info`
-- `POST /api/public-votes`
+- `POST /api/public-votes/intents` (public)
+- `POST /api/public-votes/submit` (public; `/api/public-votes` is an alias)
 - `POST /api/stages/:stageId/submissions`
 - `GET /api/wallet/me`
 - `GET /api/wallet/me/transactions`
@@ -2349,13 +2487,7 @@ Admin-auth routes:
 
 ### Manual Public Voting Flow
 
-1. Contestant registers/logs in and shares `/contestants/[id]` or a code-based frontend route.
-2. Public profile shows `contestantCode` and a Vote Now action.
-3. Vote Now loads `/api/contestants/code/:contestantCode/vote-info`.
-4. Voter transfers to the returned bank account and uses `requiredNarration` as the transfer narration.
-5. Voter submits details and optional proof image URL to `/api/public-votes`.
-6. Admin reviews `/api/admin/public-votes` and approves or rejects with `/api/admin/public-votes/:id/status`.
-7. Approved manual vote payments update `totalVotes`; pending/rejected payments do not count.
+Use **Manual Public Voting (Authoritative Current Contract)** above. In short: load vote-info, create `/api/public-votes/intents`, transfer using that intent's `paymentReference`, upload required proof to `/api/uploads/payment-proof` with that reference, then submit via `/api/public-votes/submit` (or the supported `/api/public-votes` alias). Admins confirm/reject `SUBMITTED` payments through `/api/admin/public-votes/:id/status`; only confirmation credits votes.
 
 ### Legacy Coin Voting Flow
 
@@ -2396,7 +2528,7 @@ Admin-auth routes:
 - `/competitions` -> competition listing from `/api/competitions`.
 - `/competitions/[id-or-slug]` -> competition detail. Backend supports id only; if using slug in URL, frontend must first resolve from `/api/competitions`.
 - `/contestants/[id]` -> public contestant profile from `/api/contestants/:id`.
-- `/vote/[contestantCode]` -> `/api/contestants/code/:contestantCode/vote-info` and `/api/public-votes`.
+- `/vote/[contestantCode]` -> vote-info, `/api/public-votes/intents`, `/api/uploads/payment-proof`, then `/api/public-votes/submit`.
 - `/leaderboard/[competitionId]` -> `/api/competitions/:competitionId/leaderboard`.
 - `/login` -> `/api/auth/login`.
 - `/register` -> `/api/auth/register`.

@@ -27,6 +27,10 @@ export class UpdateSiteSettingsDto {
 
   @IsString()
   @IsOptional()
+  lagosOfficeAddress?: string;
+
+  @IsString()
+  @IsOptional()
   whatsappNumber?: string;
 
   @IsString()
