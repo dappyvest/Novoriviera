@@ -48,8 +48,7 @@ Content-Type: application/json
   "password": "password123",
   "displayName": "Jane Star",
   "bio": "Singer",
-  "photoUrl": "https://example.com/photo.jpg",
-  "videoUrl": "https://example.com/video.mp4"
+  "photoUrl": "https://example.com/photo.jpg"
 }
 ```
 
@@ -59,22 +58,19 @@ Registration is the main contestant onboarding flow. It creates the user as a
 competition exists. If no competition is open for registration, the API returns:
 `No active competition is currently open for registration.`
 
-Before registration, the frontend can upload optional contestant media without
-authentication:
+Before registration, the frontend can upload an optional contestant photo
+without authentication:
 
 ```http
 POST /api/uploads/registration-image
-POST /api/uploads/registration-video
 Content-Type: multipart/form-data
 
-file=<image or video file>
+file=<image file>
 ```
 
 Registration images accept JPG, JPEG, PNG, and WebP up to 5 MB and upload to
-`novoriviera/registration-images`. Registration videos accept MP4, MOV, WebM,
-AVI, MKV, and 3GP up to 100 MB and upload to
-`novoriviera/registration-videos`. Use the returned `secureUrl` and `publicId`
-in the registration body. Cloudinary secrets stay backend-only.
+`novoriviera/registration-images`. Use the returned `secureUrl` and `publicId`
+in the registration body. The former `/api/uploads/registration-video` route is retained for compatibility but returns `400`; TikTok URLs are separate link metadata. Cloudinary secrets stay backend-only.
 
 Voters do not register. Public voting is manual bank transfer through
 `POST /api/public-votes`; wallet, coin, and Paystack endpoints remain in the
@@ -523,7 +519,7 @@ Content-Type: application/json
   "aboutContent": "NovoRivera helps competitions run online.",
   "contactEmail": "hello@novorivera.com",
   "contactPhone": "+2348000000000",
-  "whatsappNumber": "+2348000000000",
+  "whatsappNumber": "09026595713",
   "facebookUrl": "https://facebook.com/novorivera",
   "instagramUrl": "https://instagram.com/novorivera",
   "tiktokUrl": "https://tiktok.com/@novorivera",
@@ -774,7 +770,7 @@ Content-Type: application/json
 
 Admin ad responses include `placements`, `destinationType`, `destinationValue`, resolved `targetUrl`, `impressions`, `clicks`, `ctr`, `sortOrder`, and `displayPriority`. `ctr` is `clicks / impressions * 100`, or `0` when impressions is `0`.
 
-Use existing upload routes for ad creative assets: `/api/uploads/image` for images and `/api/uploads/video` for videos. Ad videos use the same video endpoint and default to the 50 MB upload limit. Frontend ad clicks should open the resolved `targetUrl`.
+Use existing upload routes for ad creative assets: `/api/uploads/image` for images and the admin-only `/api/uploads/video` for videos. Ad videos default to the 50 MB upload limit. Frontend ad clicks should open the resolved `targetUrl`.
 
 Ads must be rendered in page slots only and should not interrupt voting or submission flows. Admin ad create/update/delete operations write `AdminAuditLog` entries with `SPONSORED_AD_CREATE`, `SPONSORED_AD_UPDATE`, and `SPONSORED_AD_DELETE`.
 
@@ -800,13 +796,13 @@ Do not expose `CLOUDINARY_API_SECRET` to the frontend.
 
 ```http
 POST /api/uploads/video
-Authorization: Bearer <token>
+Authorization: Bearer <admin-token>
 Content-Type: multipart/form-data
 
 file=<video file>
 ```
 
-The video upload endpoint accepts MP4, MOV, WebM, AVI, MKV, and 3GP files and uploads to Cloudinary under `CLOUDINARY_UPLOAD_FOLDER`. The maximum video size is controlled by `MAX_VIDEO_UPLOAD_SIZE_MB` (default `50` MB). Videos are written to temporary disk storage and streamed to Cloudinary rather than held in application memory. Oversized files return a JSON `413 Payload Too Large` response.
+This endpoint is reserved for admin sponsored-ad creative media. It accepts MP4, MOV, WebM, AVI, MKV, and 3GP files and uploads to Cloudinary under `CLOUDINARY_UPLOAD_FOLDER`. The maximum video size is controlled by `MAX_VIDEO_UPLOAD_SIZE_MB` (default `50` MB). Videos are written to temporary disk storage and streamed to Cloudinary rather than held in application memory. Oversized files return a JSON `413 Payload Too Large` response.
 
 Authenticated image uploads:
 
@@ -829,21 +825,19 @@ file=<jpg|jpeg|png|webp image>
 
 Payment proof uploads are public so unregistered voters can submit transfer receipts. They accept only JPG, JPEG, PNG, and WebP images, default to `MAX_PAYMENT_PROOF_UPLOAD_SIZE_MB=5`, and upload to the fixed Cloudinary folder `novoriviera/payment-proofs`.
 
-Public registration uploads:
+Public registration image uploads:
 
 ```http
 POST /api/uploads/registration-image
-POST /api/uploads/registration-video
 Content-Type: multipart/form-data
 
-file=<jpg|jpeg|png|webp image or mp4|mov|webm|avi|mkv|3gp video>
+file=<jpg|jpeg|png|webp image>
 ```
 
-These endpoints require no auth so new contestants can upload media before
-`POST /api/auth/register`. Registration images are limited to 5 MB and upload
-to `novoriviera/registration-images`. Registration videos are limited to 100 MB,
-stored on temporary disk, streamed to Cloudinary, and upload to
-`novoriviera/registration-videos`.
+This endpoint requires no auth so new contestants can upload a photo before
+`POST /api/auth/register`. Images are limited to 5 MB and upload to
+`novoriviera/registration-images`. `/api/uploads/registration-video` is retired
+and returns a clear `400` response without processing a file.
 
 Upload response:
 
@@ -874,7 +868,7 @@ Content-Type: application/json
 
 Only the contestant profile owner can update the photo. `photoUrl` must be a valid HTTPS URL. No approval status is required for photo upload; `REJECTED` and `ELIMINATED` contestants should contact support. Cloudinary secrets remain backend-only.
 
-Contestant submissions still support manually entered `videoUrl` and `uploadUrl`. If the frontend uploads a video first, submit the returned `secureUrl` as `videoUrl` and/or `uploadUrl`, and optionally include `cloudinaryPublicId`, `cloudinarySecureUrl`, and `uploadedFileMeta`.
+Historical contestant submissions still expose `videoUrl`, `uploadUrl`, and Cloudinary metadata. Active frontend competition flows must not upload a video file. TikTok links remain separate `tiktokUrl` metadata managed through the admin submission link endpoint below.
 
 ### Public Contestant Profiles
 

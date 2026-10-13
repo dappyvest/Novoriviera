@@ -32,7 +32,7 @@ export class CmsService {
           contactEmail: 'hello@novorivera.com',
           contactPhone: '',
           lagosOfficeAddress: null,
-          whatsappNumber: '',
+          whatsappNumber: '09026595713',
           facebookUrl: '',
           instagramUrl: '',
           tiktokUrl: '',

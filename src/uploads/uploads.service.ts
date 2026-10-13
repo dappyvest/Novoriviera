@@ -45,14 +45,6 @@ const supportedPaymentProofExtensions = new Set([
 
 const supportedRegistrationImageMimeTypes = supportedPaymentProofMimeTypes;
 const supportedRegistrationImageExtensions = supportedPaymentProofExtensions;
-const supportedRegistrationVideoExtensions = new Set([
-  '.mp4',
-  '.mov',
-  '.webm',
-  '.avi',
-  '.mkv',
-  '.3gp',
-]);
 
 @Injectable()
 export class UploadsService {
@@ -217,65 +209,6 @@ export class UploadsService {
       );
       throw new BadGatewayException(
         'Registration image upload service failed. Please try again',
-      );
-    } finally {
-      if (file.path) {
-        await fs.unlink(file.path).catch((cleanupError: unknown) => {
-          this.logger.warn(
-            `Could not remove temporary upload ${file.path}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
-          );
-        });
-      }
-    }
-  }
-
-  async uploadRegistrationVideo(file: UploadedFile | undefined) {
-    if (!file) {
-      throw new BadRequestException(
-        `File is required in the multipart/form-data field named "file"`,
-      );
-    }
-
-    try {
-      const extension = this.getFileExtension(file.originalname);
-      const isValidVideo =
-        supportedVideoMimeTypes.has(file.mimetype) &&
-        supportedRegistrationVideoExtensions.has(extension);
-
-      if (!isValidVideo) {
-        throw new BadRequestException(
-          'Invalid registration video file type. Upload an MP4, MOV, WebM, AVI, MKV, or 3GP video',
-        );
-      }
-
-      const result = await this.uploadToCloudinary(
-        file,
-        'registration video',
-        'novoriviera/registration-videos',
-        'video',
-      );
-
-      return {
-        secureUrl: result.secureUrl,
-        publicId: result.publicId,
-        resourceType: result.resourceType,
-        format: result.format,
-        bytes: result.bytes,
-      };
-    } catch (error) {
-      if (
-        error instanceof BadRequestException ||
-        error instanceof ServiceUnavailableException
-      ) {
-        throw error;
-      }
-
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `Cloudinary registration video upload failed name=${file.originalname} size=${file.size} mimetype=${file.mimetype}: ${message}`,
-      );
-      throw new BadGatewayException(
-        'Registration video upload service failed. Please try again',
       );
     } finally {
       if (file.path) {

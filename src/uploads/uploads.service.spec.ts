@@ -209,53 +209,6 @@ describe('UploadsService', () => {
     });
   });
 
-  it('uploads registration videos to the fixed public registration folder', async () => {
-    uploadStreamMock.mockImplementation(
-      (
-        _options: unknown,
-        callback: (error: undefined, result: Record<string, unknown>) => void,
-      ) =>
-        new Writable({
-          write(_chunk, _encoding, done) {
-            done();
-          },
-          final(done) {
-            callback(undefined, {
-              secure_url:
-                'https://res.cloudinary.com/test/registration/entry.mp4',
-              public_id: 'novoriviera/registration-videos/entry',
-              resource_type: 'video',
-              format: 'mp4',
-              bytes: 48,
-            });
-            done();
-          },
-        }),
-    );
-
-    const result = await service.uploadRegistrationVideo({
-      buffer: Buffer.from('video-bytes'),
-      mimetype: 'video/mp4',
-      originalname: 'entry.mp4',
-      size: 11,
-    });
-
-    expect(uploadStreamMock).toHaveBeenCalledWith(
-      {
-        folder: 'novoriviera/registration-videos',
-        resource_type: 'video',
-      },
-      expect.any(Function),
-    );
-    expect(result).toMatchObject({
-      secureUrl: 'https://res.cloudinary.com/test/registration/entry.mp4',
-      publicId: 'novoriviera/registration-videos/entry',
-      resourceType: 'video',
-      format: 'mp4',
-      bytes: 48,
-    });
-  });
-
   it('rejects unsupported registration image formats', async () => {
     await expect(
       service.uploadRegistrationImage({
@@ -267,21 +220,6 @@ describe('UploadsService', () => {
     ).rejects.toMatchObject<Partial<BadRequestException>>({
       message:
         'Invalid registration image file type. Upload a JPG, JPEG, PNG, or WebP image',
-    });
-    expect(uploadStreamMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects unsupported registration video formats', async () => {
-    await expect(
-      service.uploadRegistrationVideo({
-        buffer: Buffer.from('video-bytes'),
-        mimetype: 'video/mp4',
-        originalname: 'entry.mpeg',
-        size: 9,
-      }),
-    ).rejects.toMatchObject<Partial<BadRequestException>>({
-      message:
-        'Invalid registration video file type. Upload an MP4, MOV, WebM, AVI, MKV, or 3GP video',
     });
     expect(uploadStreamMock).not.toHaveBeenCalled();
   });

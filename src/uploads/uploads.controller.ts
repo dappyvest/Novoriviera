@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Body,
+  CanActivate,
   CallHandler,
   Controller,
   ExecutionContext,
@@ -14,6 +15,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { UserRole } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -32,49 +34,23 @@ type UploadedMultipartFile = {
 };
 
 const maxUploadSizeMb = Number(process.env.MAX_UPLOAD_SIZE_MB ?? 100);
-const maxVideoUploadSizeMb = Number(
-  process.env.MAX_VIDEO_UPLOAD_SIZE_MB ?? 50,
-);
+const maxVideoUploadSizeMb = Number(process.env.MAX_VIDEO_UPLOAD_SIZE_MB ?? 50);
 const maxPaymentProofUploadSizeMb = Number(
   process.env.MAX_PAYMENT_PROOF_UPLOAD_SIZE_MB ?? 5,
 );
 const maxRegistrationImageUploadSizeMb = 5;
-const maxRegistrationVideoUploadSizeMb = 100;
 const maxUploadSizeBytes = maxUploadSizeMb * 1024 * 1024;
 const maxVideoUploadSizeBytes = maxVideoUploadSizeMb * 1024 * 1024;
 const maxPaymentProofUploadSizeBytes =
   maxPaymentProofUploadSizeMb * 1024 * 1024;
 const maxRegistrationImageUploadSizeBytes =
   maxRegistrationImageUploadSizeMb * 1024 * 1024;
-const maxRegistrationVideoUploadSizeBytes =
-  maxRegistrationVideoUploadSizeMb * 1024 * 1024;
 const registrationImageMimeTypes = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
 ]);
-const registrationImageExtensions = new Set([
-  '.jpg',
-  '.jpeg',
-  '.png',
-  '.webp',
-]);
-const registrationVideoMimeTypes = new Set([
-  'video/mp4',
-  'video/quicktime',
-  'video/webm',
-  'video/x-msvideo',
-  'video/x-matroska',
-  'video/3gpp',
-]);
-const registrationVideoExtensions = new Set([
-  '.mp4',
-  '.mov',
-  '.webm',
-  '.avi',
-  '.mkv',
-  '.3gp',
-]);
+const registrationImageExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const paymentProofMimeTypes = new Set([
   'image/jpeg',
   'image/png',
@@ -121,7 +97,10 @@ export class VideoUploadLoggingInterceptor implements NestInterceptor {
 
 @Injectable()
 export class RegistrationImageUploadInterceptor implements NestInterceptor {
-  intercept(_context: ExecutionContext, next: CallHandler): Observable<unknown> {
+  intercept(
+    _context: ExecutionContext,
+    next: CallHandler,
+  ): Observable<unknown> {
     return next.handle().pipe(
       catchError((error: unknown) => {
         const multerCode = (error as { code?: string })?.code;
@@ -143,43 +122,31 @@ export class RegistrationImageUploadInterceptor implements NestInterceptor {
 }
 
 @Injectable()
-export class RegistrationVideoUploadInterceptor implements NestInterceptor {
-  private readonly logger = new Logger('RegistrationVideoUpload');
-
-  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+export class AdminVideoUploadGuard implements CanActivate {
+  canActivate(context: ExecutionContext) {
     const request = context.switchToHttp().getRequest<{
-      headers: Record<string, string | undefined>;
+      user?: { role?: UserRole };
     }>();
-    this.logger.log(
-      `Registration video upload started contentLength=${request.headers['content-length'] ?? 'unknown'} contentType=${request.headers['content-type'] ?? 'unknown'}`,
-    );
 
-    return next.handle().pipe(
-      catchError((error: unknown) => {
-        const multerCode = (error as { code?: string })?.code;
-        const status = (error as { getStatus?: () => number })?.getStatus?.();
+    if (
+      request.user?.role === UserRole.ADMIN ||
+      request.user?.role === UserRole.SUPER_ADMIN
+    ) {
+      return true;
+    }
 
-        if (multerCode === 'LIMIT_FILE_SIZE' || status === 413) {
-          return throwError(
-            () =>
-              new PayloadTooLargeException(
-                `Registration video exceeds the ${maxRegistrationVideoUploadSizeMb} MB limit`,
-              ),
-          );
-        }
-
-        this.logger.error(
-          `Registration video upload request failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
-        return throwError(() => error);
-      }),
+    throw new BadRequestException(
+      'Competition video-file uploads are retired. Submit a TikTok URL instead.',
     );
   }
 }
 
 @Injectable()
 export class PaymentProofUploadInterceptor implements NestInterceptor {
-  intercept(_context: ExecutionContext, next: CallHandler): Observable<unknown> {
+  intercept(
+    _context: ExecutionContext,
+    next: CallHandler,
+  ): Observable<unknown> {
     return next.handle().pipe(
       catchError((error: unknown) => {
         const multerCode = (error as { code?: string })?.code;
@@ -204,10 +171,13 @@ export class PaymentProofUploadInterceptor implements NestInterceptor {
 export class UploadsController {
   private readonly logger = new Logger(UploadsController.name);
 
-  constructor(private readonly uploadsService: UploadsService, private readonly publicVotesService: PublicVotesService) {}
+  constructor(
+    private readonly uploadsService: UploadsService,
+    private readonly publicVotesService: PublicVotesService,
+  ) {}
 
   @Post('video')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminVideoUploadGuard)
   @UseInterceptors(
     VideoUploadLoggingInterceptor,
     FileInterceptor('file', {
@@ -281,48 +251,10 @@ export class UploadsController {
   }
 
   @Post('registration-video')
-  @UseInterceptors(
-    RegistrationVideoUploadInterceptor,
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: tmpdir(),
-        filename: (_request, file, callback) =>
-          callback(
-            null,
-            `novorivera-registration-${randomUUID()}${extname(file.originalname)}`,
-          ),
-      }),
-      limits: { fileSize: maxRegistrationVideoUploadSizeBytes, files: 1 },
-      fileFilter: (_request, file, callback) => {
-        const extension = extname(file.originalname).toLowerCase();
-        const isValid =
-          registrationVideoMimeTypes.has(file.mimetype) &&
-          registrationVideoExtensions.has(extension);
-
-        if (!isValid) {
-          callback(
-            new BadRequestException(
-              'Invalid registration video file type. Upload an MP4, MOV, WebM, AVI, MKV, or 3GP video',
-            ),
-            false,
-          );
-          return;
-        }
-
-        callback(null, true);
-      },
-    }),
-  )
-  uploadRegistrationVideo(
-    @UploadedFile() file: UploadedMultipartFile | undefined,
-  ) {
-    if (file) {
-      this.logger.log(
-        `Registration video received name=${file.originalname} size=${file.size} mimetype=${file.mimetype}`,
-      );
-    }
-
-    return this.uploadsService.uploadRegistrationVideo(file);
+  uploadRegistrationVideo() {
+    throw new BadRequestException(
+      'Registration video-file uploads are retired. Submit a TikTok URL instead.',
+    );
   }
 
   @Post('payment-proof')
@@ -358,7 +290,9 @@ export class UploadsController {
       throw new BadRequestException('Invalid payment proof upload');
     }
     if (!paymentReference) {
-      throw new BadRequestException('paymentReference is required to associate a proof');
+      throw new BadRequestException(
+        'paymentReference is required to associate a proof',
+      );
     }
     const proof = await this.uploadsService.uploadPaymentProof(file);
     await this.publicVotesService.attachProof(paymentReference, proof);

@@ -535,29 +535,25 @@ Body:
   "location": "Lagos",
   "guardianName": "Parent Name",
   "guardianPhone": "+2348012345678",
-  "photoUrl": "https://example.com/photo.jpg",
-  "videoUrl": "https://example.com/video.mp4",
-  "uploadUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
-  "cloudinarySecureUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4"
+  "photoUrl": "https://example.com/photo.jpg"
 }
 ```
 
 Registration is contestant registration. The backend creates the user as a `CONTESTANT` and automatically creates a contestant profile in the current `ACTIVE` competition, falling back to the newest `PUBLISHED` competition. Voters do not register.
 
-If the registration form collects a photo or intro video before the user exists,
-upload those files first through the public registration upload endpoints:
+If the registration form collects a photo before the user exists, upload it
+through the public registration image endpoint:
 
 ```http
 POST /api/uploads/registration-image
-POST /api/uploads/registration-video
 Content-Type: multipart/form-data
 
-file=<image or video file>
+file=<image file>
 ```
 
 Use the returned `secureUrl` and `publicId` values in the registration body.
-Registration images accept JPG, JPEG, PNG, and WebP up to 5 MB. Registration
-videos accept MP4, MOV, WebM, AVI, MKV, and 3GP up to 100 MB.
+Registration images accept JPG, JPEG, PNG, and WebP up to 5 MB. The former
+`POST /api/uploads/registration-video` route is retired and returns `400`.
 
 Success:
 
@@ -581,16 +577,11 @@ Success:
     "status": "PENDING",
     "competitionId": "competition-id"
   },
-  "submission": {
-    "id": "submission-id",
-    "title": "Jane Star",
-    "videoUrl": "https://example.com/video.mp4",
-    "status": "APPROVED"
-  }
+  "submission": null
 }
 ```
 
-`submission` is `null` when no video fields are submitted or the selected competition has no stage. New contestant profiles are publicly visible immediately unless an admin rejects/removes them.
+New registrations no longer upload a video file. New contestant profiles are publicly visible immediately unless an admin rejects/removes them. Historical registration submissions and their video URL fields remain readable.
 
 Common errors: `400` invalid body or no active/default competition (`No active competition is currently open for registration.`), `409` email already registered.
 
@@ -716,7 +707,7 @@ Success examples:
   "contactEmail": "hello@novorivera.com",
   "contactPhone": "",
   "lagosOfficeAddress": null,
-  "whatsappNumber": "",
+  "whatsappNumber": "09026595713",
   "facebookUrl": "",
   "instagramUrl": "",
   "tiktokUrl": "",
@@ -727,6 +718,8 @@ Success examples:
   "updatedAt": "2026-06-14T00:00:00.000Z"
 }
 ```
+
+`whatsappNumber` is the official public WhatsApp contact and is editable through authenticated `PATCH /api/admin/site-settings`. It is separate from `contactPhone`, which must not be inferred or overwritten when WhatsApp changes.
 
 `GET /api/faqs` returns active FAQs only, sorted by `sortOrder` then `createdAt`.
 
@@ -790,22 +783,22 @@ Cloudinary credentials are backend-only. Do not store or use `CLOUDINARY_API_SEC
 
 | Method | Path | Auth | Roles |
 | --- | --- | --- | --- |
-| `POST` | `/api/uploads/video` | Required | Any active user |
+| `POST` | `/api/uploads/video` | Required | `ADMIN`, `SUPER_ADMIN` (sponsored-ad media only) |
 | `POST` | `/api/uploads/image` | Required | Any active user |
 | `POST` | `/api/uploads/registration-image` | Public | None |
-| `POST` | `/api/uploads/registration-video` | Public | None |
+| `POST` | `/api/uploads/registration-video` | Public compatibility route | Retired; always `400` |
 | `POST` | `/api/uploads/payment-proof` | Public | None |
 
 Request:
 
 - `multipart/form-data`
 - Field name: `file`
-- Video route accepts MP4, MOV, WebM, AVI, MKV, and 3GP.
+- Admin sponsored-ad video uploads accept MP4, MOV, WebM, AVI, MKV, and 3GP.
 - Image route accepts `image/*` only.
-- Max video upload size is configured by `MAX_VIDEO_UPLOAD_SIZE_MB`, default `50` MB.
+- Admin ad video max size is configured by `MAX_VIDEO_UPLOAD_SIZE_MB`, default `50` MB.
 - Registration image route accepts JPG, JPEG, PNG, and WebP, max `5` MB.
-- Registration video route accepts MP4, MOV, WebM, AVI, MKV, and 3GP, max `100` MB.
-- Registration uploads use fixed Cloudinary folders `novoriviera/registration-images` and `novoriviera/registration-videos`.
+- The registration-video route does not parse or upload a file; it returns `400 Registration video-file uploads are retired. Submit a TikTok URL instead.`
+- Registration images use the fixed Cloudinary folder `novoriviera/registration-images`.
 - Payment proof route accepts only JPG, JPEG, PNG, and WebP images.
 - Payment proof max size is configured by `MAX_PAYMENT_PROOF_UPLOAD_SIZE_MB`, default `5` MB.
 - Payment proofs upload to the fixed Cloudinary folder `novoriviera/payment-proofs`.
@@ -814,22 +807,23 @@ Success:
 
 ```json
 {
-  "secureUrl": "https://res.cloudinary.com/cloud/video/upload/novorivera/entry.mp4",
-  "publicId": "novorivera/entry",
-  "resourceType": "video",
-  "format": "mp4",
-  "bytes": 1048576,
-  "duration": 30.5
+  "secureUrl": "https://res.cloudinary.com/cloud/image/upload/novoriviera/registration-images/photo.jpg",
+  "publicId": "novoriviera/registration-images/photo",
+  "resourceType": "image",
+  "format": "jpg",
+  "bytes": 1048576
 }
 ```
 
 Use the image response `secureUrl` and `publicId` with the contestant photo update endpoint. Cloudinary API credentials and signatures are never returned.
 
-Use `POST /api/uploads/registration-image` and `POST /api/uploads/registration-video` before `POST /api/auth/register` when the new-user form uploads media before authentication. Send the returned `secureUrl` as `photoUrl`, `videoUrl`, `uploadUrl`, or `cloudinarySecureUrl` as appropriate, and keep Cloudinary credentials out of the frontend.
+Use `POST /api/uploads/registration-image` before `POST /api/auth/register` when the new-user form uploads a photo before authentication. Send the returned `secureUrl` as `photoUrl` and `publicId` as `photoPublicId`.
+
+A TikTok URL is link metadata, not a video-file upload. TikTok submission links remain stored in `Submission.tiktokUrl` and can be managed through the existing admin submission metadata endpoint; TikTok engagement remains a separate admin-managed metric.
 
 Payment-proof voting is an intent-based flow. `POST /api/uploads/payment-proof` is public and must receive `file` plus `paymentReference`; it associates the uploaded proof server-side. Do not put its `secureUrl` in a public-vote JSON payload. The authoritative request and response contract is in **Manual Public Voting** below.
 
-Common errors: `400` missing file or unsupported/invalid format, `401` for auth-required upload routes, `413` file too large, `502` Cloudinary upload failure, `503` Cloudinary not configured. All application errors are JSON responses.
+Common errors: `400` retired competition video upload, missing file, or unsupported/invalid format; `401` for auth-required upload routes; `413` file too large; `502` Cloudinary upload failure; `503` Cloudinary not configured. All application errors are JSON responses.
 
 ### Manual Public Voting (Authoritative Current Contract)
 
@@ -1171,7 +1165,7 @@ For navigation, use the resolved `targetUrl`. Call the click endpoint before or 
 
 Analytics: all admin ad responses include `impressions`, `clicks`, and `ctr`, where `ctr = clicks / impressions * 100`. If impressions is `0`, `ctr` is `0`.
 
-Admins upload ad images with `/api/uploads/image` and ad videos with `/api/uploads/video`, then save `secureUrl` as `imageUrl` or `videoUrl` and `publicId` as `videoPublicId` where relevant. Ad video uploads use the existing video upload endpoint and the 50 MB default max.
+Admins upload ad images with `/api/uploads/image` and ad videos with `/api/uploads/video`, then save `secureUrl` as `imageUrl` or `videoUrl` and `publicId` as `videoPublicId` where relevant. The video endpoint is now admin-only and retained solely for sponsored-ad creative media; its default max remains 50 MB.
 
 Admin create/update/delete writes `AdminAuditLog` entries with actions `SPONSORED_AD_CREATE`, `SPONSORED_AD_UPDATE`, and `SPONSORED_AD_DELETE`.
 
@@ -1453,17 +1447,11 @@ Body:
 ```json
 {
   "title": "My stage entry",
-  "description": "Optional description",
-  "videoUrl": "https://example.com/video.mp4",
-  "uploadUrl": "https://example.com/uploaded-file",
-  "cloudinaryPublicId": "novorivera/entry",
-  "cloudinarySecureUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
-  "uploadedFileMeta": {
-    "bytes": 1048576,
-    "duration": 30.5
-  }
+  "description": "Optional description"
 }
 ```
+
+Legacy upload metadata fields remain accepted for compatibility, but active frontend competition flows must not upload a new video file or populate them from an upload response. Historical records continue to expose those fields.
 
 Success:
 
@@ -1472,8 +1460,8 @@ Success:
   "id": "submission-id",
   "title": "My stage entry",
   "description": "Optional description",
-  "videoUrl": "https://example.com/video.mp4",
-  "uploadUrl": "https://example.com/uploaded-file",
+  "videoUrl": null,
+  "uploadUrl": null,
   "youtubeUrl": null,
   "youtubeVideoId": null,
   "tiktokUrl": null,
@@ -1481,7 +1469,7 @@ Success:
   "instagramUrl": null,
   "externalVideoUrl": null,
   "thumbnailUrl": null,
-  "cloudinarySecureUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+  "cloudinarySecureUrl": null,
   "status": "APPROVED",
   "adminNote": null,
   "contestantId": "contestant-id",
@@ -1497,7 +1485,7 @@ Rules:
 - Current user must have a contestant profile in the stage competition. Missing profiles should register first through `/api/competitions/:competitionId/contestants`. `REJECTED` and `ELIMINATED` contestants receive `Your account or contestant profile is not allowed to submit entries. Please contact support.`
 - Current time must be inside the stage submission window when dates are set.
 - One submission per contestant per stage.
-
+- TikTok links are stored separately in `tiktokUrl`; the existing admin metadata endpoint manages that link without uploading the video file.
 Common errors: `400` outside window, missing contestant registration, or blocked contestant profile; `401`, `404`, `409`.
 
 ### Leaderboard
@@ -1869,7 +1857,7 @@ Example bodies:
   "aboutContent": "NovoRivera helps competitions run online.",
   "contactEmail": "hello@novorivera.com",
   "contactPhone": "+2348000000000",
-  "whatsappNumber": "+2348000000000",
+  "whatsappNumber": "09026595713",
   "facebookUrl": "https://facebook.com/novorivera",
   "instagramUrl": "https://instagram.com/novorivera",
   "tiktokUrl": "https://tiktok.com/@novorivera",
@@ -2420,7 +2408,6 @@ User-auth routes:
 - `GET /api/users/me`
 - `PATCH /api/users/me`
 - `PATCH /api/users/me/password`
-- `POST /api/uploads/video`
 - `POST /api/uploads/image`
 - `POST /api/competitions/:competitionId/contestants`
 - `GET /api/contestants/me`
@@ -2444,6 +2431,7 @@ Admin-auth routes:
 
 - All `/api/admin/*` routes.
 - `POST /api/admin/ads`
+- `POST /api/uploads/video` (sponsored-ad media only)
 - `GET /api/admin/ads`
 - `GET /api/admin/ads/:id`
 - `PATCH /api/admin/ads/:id`
@@ -2514,7 +2502,7 @@ Use **Manual Public Voting (Authoritative Current Contract)** above. In short: l
 2. Backend automatically creates the contestant profile in the active/default competition.
 3. Contestant starts as `PENDING` but appears publicly immediately unless admin rejects/removes them.
 4. Optional photo path before signup: upload an image to `/api/uploads/registration-image`, then include `photoUrl` and optional `photoPublicId`/metadata during registration. After login, use `/api/uploads/image` with `/api/contestants/me/:competitionId/photo` for photo changes.
-5. Optional video path before signup: upload video to `/api/uploads/registration-video`, then include `videoUrl`, `uploadUrl`, or `cloudinarySecureUrl` during registration when practical. If submitted after registration, use `/api/uploads/video` and `/api/stages/:stageId/submissions`.
+5. Do not upload a competition video file. `/api/uploads/registration-video` is a compatibility route that returns `400`, and `/api/uploads/video` is reserved for admin sponsored-ad media. TikTok links remain separate submission metadata managed through `/api/admin/submissions/:id/youtube`.
 6. Registered contestants can submit immediately to open submission stages; only `REJECTED` and `ELIMINATED` contestant profiles are blocked.
 7. One submission is allowed per contestant per stage.
 8. Submission starts as `APPROVED`, appears publicly immediately, and appears in the admin dashboard under **Submissions**; admin removes, rejects, or moderates invalid entries through admin contestant/submission status tools.

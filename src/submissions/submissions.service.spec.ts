@@ -9,6 +9,8 @@ describe('SubmissionsService', () => {
   const stageFindUnique = jest.fn();
   const contestantFindUnique = jest.fn();
   const submissionCreate = jest.fn();
+  const submissionFindUnique = jest.fn();
+  const submissionUpdate = jest.fn();
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -21,6 +23,8 @@ describe('SubmissionsService', () => {
     submissionCreate.mockImplementation(({ data }) =>
       Promise.resolve({ id: 'submission-1', ...data }),
     );
+    submissionFindUnique.mockResolvedValue({ id: 'submission-1' });
+    submissionUpdate.mockImplementation(({ data }) => Promise.resolve(data));
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -30,7 +34,11 @@ describe('SubmissionsService', () => {
           useValue: {
             stage: { findUnique: stageFindUnique },
             contestant: { findUnique: contestantFindUnique },
-            submission: { create: submissionCreate },
+            submission: {
+              create: submissionCreate,
+              findUnique: submissionFindUnique,
+              update: submissionUpdate,
+            },
           },
         },
       ],
@@ -95,4 +103,16 @@ describe('SubmissionsService', () => {
       expect(submissionCreate).not.toHaveBeenCalled();
     },
   );
+
+  it('preserves TikTok URL submission metadata updates', async () => {
+    const tiktokUrl = 'https://www.tiktok.com/@novo/video/123';
+
+    await expect(
+      service.updateYoutube('submission-1', { tiktokUrl }),
+    ).resolves.toEqual({ tiktokUrl });
+    expect(submissionUpdate).toHaveBeenCalledWith({
+      where: { id: 'submission-1' },
+      data: { tiktokUrl },
+    });
+  });
 });

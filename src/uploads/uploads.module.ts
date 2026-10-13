@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import {
+  AdminVideoUploadGuard,
   PaymentProofUploadInterceptor,
   RegistrationImageUploadInterceptor,
-  RegistrationVideoUploadInterceptor,
   UploadsController,
   VideoUploadLoggingInterceptor,
 } from './uploads.controller';
@@ -13,10 +13,10 @@ import { PublicVotesModule } from '../public-votes/public-votes.module';
   imports: [PublicVotesModule],
   controllers: [UploadsController],
   providers: [
+    AdminVideoUploadGuard,
     UploadsService,
     PaymentProofUploadInterceptor,
     RegistrationImageUploadInterceptor,
-    RegistrationVideoUploadInterceptor,
     VideoUploadLoggingInterceptor,
   ],
 })
