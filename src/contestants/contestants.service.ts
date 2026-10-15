@@ -12,8 +12,6 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateContestantDto } from './dto/create-contestant.dto';
-import { UpdateEngagementDto } from './dto/update-engagement.dto';
-import { UpdateContestantPremiumDto } from './dto/update-contestant-premium.dto';
 import { UpdateContestantPhotoDto } from './dto/update-contestant-photo.dto';
 import { getVotingWindowStatus } from '../competitions/voting-window.util';
 
@@ -324,89 +322,6 @@ export class ContestantsService {
     });
   }
 
-  async updatePremium(id: string, dto: UpdateContestantPremiumDto) {
-    await this.findOne(id);
-    return this.prisma.contestant.update({
-      where: { id },
-      data: {
-        isPremium: dto.isPremium,
-        premiumExpiresAt: dto.premiumExpiresAt
-          ? new Date(dto.premiumExpiresAt)
-          : null,
-      },
-    });
-  }
-
-  async updateEngagement(
-    id: string,
-    dto: UpdateEngagementDto,
-    actorId: string,
-  ) {
-    await this.findOne(id);
-    const totalEngagement = this.computeEngagementTotal(dto);
-
-    return this.prisma.$transaction(async (tx) => {
-      if (dto.stageId) {
-        const stage = await tx.stage.findUnique({ where: { id: dto.stageId } });
-        if (!stage) {
-          throw new NotFoundException('Stage not found');
-        }
-      }
-
-      const contestant = await tx.contestant.update({
-        where: { id },
-        data: {
-          totalOnlineEngagement: { increment: totalEngagement },
-        },
-      });
-
-      await tx.engagementBreakdown.create({
-        data: {
-          contestantId: id,
-          stageId: dto.stageId,
-          views: dto.views ?? 0,
-          likes: dto.likes ?? 0,
-          comments: dto.comments ?? 0,
-          shares: dto.shares ?? 0,
-          watchScore: dto.watchScore ?? 0,
-          total: totalEngagement,
-          platform: dto.platform,
-          note: dto.note,
-        },
-      });
-
-      await tx.adminAuditLog.create({
-        data: {
-          actorId,
-          action: 'ENGAGEMENT_UPDATE',
-          entity: 'Contestant',
-          entityId: id,
-          metadata: { ...dto },
-        },
-      });
-
-      return contestant;
-    });
-  }
-
-  private computeEngagementTotal(dto: UpdateEngagementDto) {
-    if (dto.onlineEngagementCount !== undefined) {
-      return dto.onlineEngagementCount;
-    }
-
-    const total =
-      (dto.views ?? 0) +
-      (dto.likes ?? 0) +
-      (dto.comments ?? 0) +
-      (dto.shares ?? 0) +
-      (dto.watchScore ?? 0);
-
-    if (total < 0) {
-      throw new BadRequestException('Engagement total cannot be negative');
-    }
-
-    return total;
-  }
 
   private async generateContestantCode(tx: Prisma.TransactionClient) {
     for (let attempt = 0; attempt < 10; attempt += 1) {

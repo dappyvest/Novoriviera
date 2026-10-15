@@ -62,14 +62,12 @@ export class CompetitionsController {
   @Get(':competitionId/leaderboard')
   leaderboard(
     @Param('competitionId') competitionId: string,
-    @Query('featuredFirst') featuredFirst?: string,
     @Query('mode') mode?: 'votes' | 'engagement' | 'combined',
     @Query('engagementWeight') engagementWeight?: string,
     @Query('tokenWeight') tokenWeight?: string,
   ) {
     return this.competitionsService.leaderboard(
       competitionId,
-      featuredFirst === 'true',
       mode ?? 'votes',
       engagementWeight ? Number(engagementWeight) : undefined,
       tokenWeight ? Number(tokenWeight) : undefined,

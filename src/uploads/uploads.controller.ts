@@ -136,7 +136,7 @@ export class AdminVideoUploadGuard implements CanActivate {
     }
 
     throw new BadRequestException(
-      'Competition video-file uploads are retired. Submit a TikTok URL instead.',
+      'Competition video-file uploads are retired.',
     );
   }
 }
@@ -253,7 +253,7 @@ export class UploadsController {
   @Post('registration-video')
   uploadRegistrationVideo() {
     throw new BadRequestException(
-      'Registration video-file uploads are retired. Submit a TikTok URL instead.',
+      'Registration video-file uploads are retired.',
     );
   }
 

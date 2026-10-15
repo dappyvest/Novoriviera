@@ -9,10 +9,6 @@ export class UpdateSubmissionYoutubeDto {
   @IsOptional()
   youtubeVideoId?: string;
 
-  @IsString()
-  @IsOptional()
-  tiktokUrl?: string;
-
 
   @IsString()
   @IsOptional()

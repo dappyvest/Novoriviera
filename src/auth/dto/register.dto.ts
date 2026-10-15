@@ -60,25 +60,6 @@ export class RegisterDto {
   @IsOptional()
   photoMeta?: Record<string, unknown>;
 
-  @IsString()
-  @IsOptional()
-  videoUrl?: string;
-
-  @IsString()
-  @IsOptional()
-  uploadUrl?: string;
-
-  @IsString()
-  @IsOptional()
-  cloudinaryPublicId?: string;
-
-  @IsString()
-  @IsOptional()
-  cloudinarySecureUrl?: string;
-
-  @IsObject()
-  @IsOptional()
-  uploadedFileMeta?: Record<string, unknown>;
 
   @IsString()
   @IsOptional()

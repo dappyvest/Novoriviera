@@ -70,7 +70,7 @@ file=<image file>
 
 Registration images accept JPG, JPEG, PNG, and WebP up to 5 MB and upload to
 `novoriviera/registration-images`. Use the returned `secureUrl` and `publicId`
-in the registration body. The former `/api/uploads/registration-video` route is retained for compatibility but returns `400`; TikTok URLs are separate link metadata. Cloudinary secrets stay backend-only.
+in the registration body. The former `/api/uploads/registration-video` route is retained for compatibility but returns `400`; Contestant video links are retired and rejected. Historical submission metadata remains read-only. Cloudinary secrets stay backend-only.
 
 Voters do not register. Public voting is manual bank transfer through
 `POST /api/public-votes`; wallet, coin, and Paystack endpoints remain in the
@@ -868,7 +868,7 @@ Content-Type: application/json
 
 Only the contestant profile owner can update the photo. `photoUrl` must be a valid HTTPS URL. No approval status is required for photo upload; `REJECTED` and `ELIMINATED` contestants should contact support. Cloudinary secrets remain backend-only.
 
-Historical contestant submissions still expose `videoUrl`, `uploadUrl`, and Cloudinary metadata. Active frontend competition flows must not upload a video file. TikTok links remain separate `tiktokUrl` metadata managed through the admin submission link endpoint below.
+Historical contestant submissions still expose `videoUrl`, `uploadUrl`, and Cloudinary metadata. Active frontend competition flows must not upload a video file. Historical TikTok links remain readable in existing records, but new TikTok URLs and contestant video links are rejected.
 
 ### Public Contestant Profiles
 
@@ -880,7 +880,7 @@ Returns registered entrant public profile data, excluding only `REJECTED` and `E
 
 ### Multi-Platform Submission Links
 
-Admin submission link updates now support YouTube, TikTok, Facebook, Instagram, and an external video URL:
+Admin submission link updates support legacy non-TikTok metadata only; TikTok URLs are rejected:
 
 ```http
 PATCH /api/admin/submissions/:id/youtube

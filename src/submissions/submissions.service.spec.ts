@@ -104,15 +104,25 @@ describe('SubmissionsService', () => {
     },
   );
 
-  it('preserves TikTok URL submission metadata updates', async () => {
-    const tiktokUrl = 'https://www.tiktok.com/@novo/video/123';
+  it('does not persist unsupported video-link fields when called outside HTTP validation', async () => {
+    contestantFindUnique.mockResolvedValue({
+      id: 'contestant-1',
+      status: ContestantStatus.APPROVED,
+    });
 
-    await expect(
-      service.updateYoutube('submission-1', { tiktokUrl }),
-    ).resolves.toEqual({ tiktokUrl });
-    expect(submissionUpdate).toHaveBeenCalledWith({
-      where: { id: 'submission-1' },
-      data: { tiktokUrl },
+    await service.create('user-1', 'stage-1', {
+      title: 'My entry',
+      ...( {
+        tiktokUrl: 'https://www.tiktok.com/@novo/video/123',
+        videoUrl: 'https://example.com/video',
+      } as object),
+    });
+
+    expect(submissionCreate).toHaveBeenCalledWith({
+      data: expect.not.objectContaining({
+        tiktokUrl: expect.anything(),
+        videoUrl: expect.anything(),
+      }),
     });
   });
 });

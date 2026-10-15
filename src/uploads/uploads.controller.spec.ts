@@ -25,7 +25,7 @@ describe('UploadsController', () => {
   it('rejects the retired public registration video upload route', () => {
     expect(() => controller.uploadRegistrationVideo()).toThrow(
       new BadRequestException(
-        'Registration video-file uploads are retired. Submit a TikTok URL instead.',
+        'Registration video-file uploads are retired.',
       ),
     );
     expect(upload).not.toHaveBeenCalled();
@@ -78,7 +78,7 @@ describe('AdminVideoUploadGuard', () => {
   it('rejects contestant video-file uploads before upload handling', () => {
     expect(() => guard.canActivate(contextFor(UserRole.CONTESTANT))).toThrow(
       new BadRequestException(
-        'Competition video-file uploads are retired. Submit a TikTok URL instead.',
+        'Competition video-file uploads are retired.',
       ),
     );
   });

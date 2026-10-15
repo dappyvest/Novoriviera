@@ -9,8 +9,6 @@ import {
   CompetitionStatus,
   ContestantStatus,
   Prisma,
-  StageStatus,
-  SubmissionStatus,
   User,
   UserRole,
 } from '@prisma/client';
@@ -84,17 +82,10 @@ export class AuthService {
           },
         });
 
-        const createdSubmission = await this.createRegistrationSubmission(
-          tx,
-          competition.id,
-          createdContestant.id,
-          registerDto,
-        );
-
         return {
           user: createdUser,
           contestant: createdContestant,
-          submission: createdSubmission,
+          submission: null,
         };
       },
     );
@@ -173,52 +164,6 @@ export class AuthService {
     });
   }
 
-  private async createRegistrationSubmission(
-    tx: Prisma.TransactionClient,
-    competitionId: string,
-    contestantId: string,
-    registerDto: RegisterDto,
-  ) {
-    const hasVideo =
-      Boolean(registerDto.videoUrl) ||
-      Boolean(registerDto.uploadUrl) ||
-      Boolean(registerDto.cloudinarySecureUrl);
-
-    if (!hasVideo) {
-      return null;
-    }
-
-    const stage =
-      (await tx.stage.findFirst({
-        where: { competitionId, status: StageStatus.ACTIVE },
-        orderBy: { stageNumber: 'asc' },
-      })) ??
-      (await tx.stage.findFirst({
-        where: { competitionId },
-        orderBy: { stageNumber: 'asc' },
-      }));
-
-    if (!stage) {
-      return null;
-    }
-
-    return tx.submission.create({
-      data: {
-        contestantId,
-        stageId: stage.id,
-        title: registerDto.submissionTitle ?? registerDto.displayName ?? registerDto.name,
-        description: registerDto.submissionDescription ?? registerDto.bio,
-        videoUrl: registerDto.videoUrl,
-        uploadUrl: registerDto.uploadUrl,
-        cloudinaryPublicId: registerDto.cloudinaryPublicId,
-        cloudinarySecureUrl: registerDto.cloudinarySecureUrl,
-        uploadedFileMeta: registerDto.uploadedFileMeta as
-          | Prisma.InputJsonValue
-          | undefined,
-        status: SubmissionStatus.APPROVED,
-      },
-    });
-  }
 
   private async generateContestantCode(tx: Prisma.TransactionClient) {
     for (let attempt = 0; attempt < 10; attempt += 1) {

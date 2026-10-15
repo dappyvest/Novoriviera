@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ContestantStatus, Prisma, SubmissionStatus } from '@prisma/client';
+import { ContestantStatus, SubmissionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSubmissionDto } from './dto/create-submission.dto';
 import { UpdateSubmissionStatusDto } from './dto/update-submission-status.dto';
@@ -59,10 +59,8 @@ export class SubmissionsService {
     try {
       return await this.prisma.submission.create({
         data: {
-          ...dto,
-          uploadedFileMeta: dto.uploadedFileMeta as
-            | Prisma.InputJsonValue
-            | undefined,
+          title: dto.title,
+          description: dto.description,
           contestantId: contestant.id,
           stageId,
           status: SubmissionStatus.APPROVED,

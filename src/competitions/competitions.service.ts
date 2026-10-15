@@ -217,7 +217,6 @@ export class CompetitionsService {
 
   async leaderboard(
     competitionId: string,
-    featuredFirst = false,
     mode: 'votes' | 'engagement' | 'combined' = 'votes',
     engagementWeight = 50,
     tokenWeight = 50,
@@ -264,10 +263,6 @@ export class CompetitionsService {
     });
 
     const ranked = scored.sort((a, b) => {
-      if (featuredFirst && a.contestant.isPremium !== b.contestant.isPremium) {
-        return Number(b.contestant.isPremium) - Number(a.contestant.isPremium);
-      }
-
       const aScore =
         mode === 'engagement'
           ? a.contestant.totalOnlineEngagement
@@ -365,7 +360,6 @@ export class CompetitionsService {
 
     const leaderboard = await this.leaderboard(
       competitionId,
-      false,
       'combined',
       50,
       50,

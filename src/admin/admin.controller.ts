@@ -24,8 +24,6 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import type { CurrentUserPayload } from '../auth/types/current-user.type';
 import { ContestantsService } from '../contestants/contestants.service';
-import { UpdateEngagementDto } from '../contestants/dto/update-engagement.dto';
-import { UpdateContestantPremiumDto } from '../contestants/dto/update-contestant-premium.dto';
 import { UpdateContestantStatusDto } from '../contestants/dto/update-contestant-status.dto';
 import { SubmissionsService } from '../submissions/submissions.service';
 import { PaymentsService } from '../payments/payments.service';
@@ -261,22 +259,6 @@ export class AdminController {
     return this.contestantsService.removeFromPublic(id, user.id);
   }
 
-  @Patch('contestants/:id/premium')
-  updateContestantPremium(
-    @Param('id') id: string,
-    @Body() dto: UpdateContestantPremiumDto,
-  ) {
-    return this.contestantsService.updatePremium(id, dto);
-  }
-
-  @Post('contestants/:contestantId/engagement')
-  updateEngagement(
-    @Param('contestantId') contestantId: string,
-    @Body() dto: UpdateEngagementDto,
-    @CurrentUser() user: CurrentUserPayload,
-  ) {
-    return this.contestantsService.updateEngagement(contestantId, dto, user.id);
-  }
 
   @Get('votes')
   findVotes() {

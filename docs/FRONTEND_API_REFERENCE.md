@@ -797,7 +797,7 @@ Request:
 - Image route accepts `image/*` only.
 - Admin ad video max size is configured by `MAX_VIDEO_UPLOAD_SIZE_MB`, default `50` MB.
 - Registration image route accepts JPG, JPEG, PNG, and WebP, max `5` MB.
-- The registration-video route does not parse or upload a file; it returns `400 Registration video-file uploads are retired. Submit a TikTok URL instead.`
+- The registration-video route does not parse or upload a file; it returns `400 Registration video-file uploads are retired.`
 - Registration images use the fixed Cloudinary folder `novoriviera/registration-images`.
 - Payment proof route accepts only JPG, JPEG, PNG, and WebP images.
 - Payment proof max size is configured by `MAX_PAYMENT_PROOF_UPLOAD_SIZE_MB`, default `5` MB.
@@ -819,7 +819,7 @@ Use the image response `secureUrl` and `publicId` with the contestant photo upda
 
 Use `POST /api/uploads/registration-image` before `POST /api/auth/register` when the new-user form uploads a photo before authentication. Send the returned `secureUrl` as `photoUrl` and `publicId` as `photoPublicId`.
 
-A TikTok URL is link metadata, not a video-file upload. TikTok submission links remain stored in `Submission.tiktokUrl` and can be managed through the existing admin submission metadata endpoint; TikTok engagement remains a separate admin-managed metric.
+TikTok submission links are retired. `Submission.tiktokUrl` is retained only for historical read responses; new TikTok URLs are rejected.
 
 Payment-proof voting is an intent-based flow. `POST /api/uploads/payment-proof` is public and must receive `file` plus `paymentReference`; it associates the uploaded proof server-side. Do not put its `secureUrl` in a public-vote JSON payload. The authoritative request and response contract is in **Manual Public Voting** below.
 
@@ -1576,7 +1576,7 @@ Success:
   {
     "id": "winner-id",
     "placement": "FIRST",
-    "prizeAmount": "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦500,000",
+    "prizeAmount": "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦500,000",
     "totalVotes": 100,
     "totalOnlineEngagement": 150,
     "engagementScore": 50,
