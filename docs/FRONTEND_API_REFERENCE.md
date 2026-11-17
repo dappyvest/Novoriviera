@@ -1,0 +1,2614 @@
+# NovoRivera Frontend API Reference
+
+This document is generated from the backend source code, controllers, DTOs, Prisma schema, and README. It is intended to be copied into the frontend repository so frontend implementation can target the actual backend surface.
+
+Do not treat this as a product wishlist. Only use endpoints documented here unless the backend adds new routes and this file is updated.
+
+## API Basics
+
+- Default local base URL: `http://localhost:3000`
+- Frontend environment variable: `NEXT_PUBLIC_API_URL=http://localhost:3000`
+- API prefix: `/api`
+- Health check exception: `GET /health` is not prefixed with `/api`.
+- Request content type: `Content-Type: application/json`
+- Auth header: `Authorization: Bearer <token>`
+- JWT source: backend extracts tokens only from the Bearer auth header.
+- Validation: global whitelist validation is enabled. Unknown request body fields are rejected.
+- CORS: backend allows `APP_FRONTEND_URL` when configured.
+- Paystack webhook signatures are verified with backend `PAYSTACK_SECRET_KEY`.
+- Cloudinary credentials stay on the backend only. Frontend uses upload responses, not Cloudinary secrets.
+- Seed mode: `DEMO_SEED=false` disables demo competition/packages/FAQs/sponsor placeholder during seed.
+
+Example frontend client base:
+
+```ts
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const res = await fetch(`${API_URL}/api/competitions`);
+```
+
+## Auth, Roles, And Errors
+
+### User Roles
+
+From Prisma `UserRole`:
+
+```ts
+type UserRole = "USER" | "CONTESTANT" | "ADMIN" | "SUPER_ADMIN";
+```
+
+- `USER`: default registered user.
+- `CONTESTANT`: user that has registered as a contestant for at least one competition.
+- `ADMIN`: admin access.
+- `SUPER_ADMIN`: admin access.
+
+Admin-protected endpoints allow `ADMIN` and `SUPER_ADMIN`.
+
+### Frontend Enum Values
+
+```ts
+type PaymentProvider = "PAYSTACK";
+type PaymentStatus = "PENDING" | "SUCCESS" | "FAILED" | "CANCELLED";
+type ContestantStatus = "PENDING" | "APPROVED" | "REJECTED" | "ELIMINATED";
+type CompetitionStatus = "DRAFT" | "PUBLISHED" | "ACTIVE" | "COMPLETED" | "CANCELLED";
+type StageStatus = "UPCOMING" | "ACTIVE" | "VOTING_CLOSED" | "COMPLETED";
+type SubmissionStatus = "PENDING" | "APPROVED" | "REJECTED";
+type VoteSource = "COIN" | "ONLINE_ENGAGEMENT" | "ITEM_PURCHASE";
+type CoinTransactionType = "CREDIT" | "DEBIT" | "ADJUSTMENT";
+type ContactMessageStatus = "NEW" | "READ" | "RESOLVED";
+type EngagementPlatform = "TIKTOK" | "FACEBOOK" | "YOUTUBE" | "INSTAGRAM" | "OTHER";
+type WinnerPlacement = "FIRST" | "SECOND" | "THIRD";
+type LeaderboardMode = "votes" | "engagement" | "combined";
+type SponsoredAdPlacement = "HOME_TOP" | "HOME_MIDDLE" | "LEADERBOARD" | "COMPETITION_PAGE" | "CONTESTANT_PAGE" | "VOTE_PAGE";
+type SponsoredAdStatus = "DRAFT" | "ACTIVE" | "PAUSED" | "EXPIRED";
+type SponsoredAdDestinationType = "WEBSITE" | "WHATSAPP" | "FACEBOOK" | "INSTAGRAM" | "TIKTOK" | "YOUTUBE" | "OTHER";
+type ManualVotePaymentStatus =
+  | "INTENT_CREATED"
+  | "SUBMITTED"
+  | "CONFIRMED"
+  | "PENDING" // legacy database value; not produced by the current flow
+  | "APPROVED" // legacy database value; not produced by the current flow
+  | "REJECTED"
+  | "CANCELLED"; // no cancellation endpoint is implemented
+```
+
+### Error Response Format
+
+NestJS default exception responses are used.
+
+```json
+{
+  "message": "Competition not found",
+  "error": "Not Found",
+  "statusCode": 404
+}
+```
+
+Validation errors can return an array in `message`:
+
+```json
+{
+  "message": ["email must be an email", "password must be longer than or equal to 8 characters"],
+  "error": "Bad Request",
+  "statusCode": 400
+}
+```
+
+Common status codes:
+
+- `400`: validation or business rule failure.
+- `401`: missing/invalid/expired token, inactive user, invalid Paystack signature.
+- `403`: authenticated but not allowed.
+- `404`: resource not found.
+- `409`: unique constraint conflict.
+
+## TypeScript Interfaces
+
+Dates are serialized as ISO strings in JSON.
+
+```ts
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  role: UserRole;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuthResponse {
+  user: User;
+  token: string;
+}
+
+export interface Competition {
+  id: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  bannerUrl: string | null;
+  status: CompetitionStatus;
+  startDate: string | null;
+  endDate: string | null;
+  prizeFirst: string | null;
+  prizeSecond: string | null;
+  prizeThird: string | null;
+  rules: string | null;
+  manualVotingEnabled: boolean;
+  votingEnabled: boolean;
+  votingStartsAt: string | null;
+  votingEndsAt: string | null;
+  votePriceNaira?: number;
+  paymentBankName?: string | null;
+  paymentAccountName?: string | null;
+  paymentAccountNumber?: string | null;
+  paymentInstructions?: string | null;
+  ownerId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  stages?: Stage[];
+}
+
+export interface Stage {
+  id: string;
+  title: string;
+  description: string | null;
+  stageNumber: number;
+  status: StageStatus;
+  submissionStartDate: string | null;
+  submissionEndDate: string | null;
+  votingStartDate: string | null;
+  votingEndDate: string | null;
+  eliminationPercentage: number;
+  competitionId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Contestant {
+  id: string;
+  contestantCode: string;
+  displayName: string;
+  bio: string | null;
+  age: number | null;
+  location: string | null;
+  guardianName: string | null;
+  guardianPhone: string | null;
+  photoUrl: string | null;
+  status: ContestantStatus;
+  isPremium: boolean;
+  premiumExpiresAt: string | null;
+  totalVotes: number;
+  totalOnlineEngagement: number;
+  userId: string | null;
+  competitionId: string;
+  createdAt: string;
+  updatedAt: string;
+  user?: User;
+  competition?: Competition;
+}
+
+export interface Submission {
+  id: string;
+  title: string;
+  description: string | null;
+  videoUrl: string | null;
+  uploadUrl: string | null;
+  youtubeUrl: string | null;
+  youtubeVideoId: string | null;
+  tiktokUrl: string | null;
+  facebookUrl: string | null;
+  instagramUrl: string | null;
+  externalVideoUrl: string | null;
+  thumbnailUrl: string | null;
+  cloudinaryPublicId: string | null;
+  cloudinarySecureUrl: string | null;
+  uploadedFileMeta: unknown | null;
+  status: SubmissionStatus;
+  adminNote: string | null;
+  contestantId: string;
+  stageId: string;
+  createdAt: string;
+  updatedAt: string;
+  contestant?: Contestant;
+  stage?: Stage;
+}
+
+export interface LeaderboardSubmission {
+  id: string;
+  title: string;
+  description: string | null;
+  videoUrl: string | null;
+  uploadUrl: string | null;
+  cloudinarySecureUrl: string | null;
+  externalVideoUrl: string | null;
+  tiktokUrl: string | null;
+  facebookUrl: string | null;
+  youtubeUrl: string | null;
+  thumbnailUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  contestantId: string;
+  displayName: string;
+  status: ContestantStatus;
+  isPremium: boolean;
+  totalVotes: number;
+  totalOnlineEngagement: number;
+  engagementScore: number;
+  tokenScore: number;
+  combinedScore: number;
+  videoUrl: string | null;
+  uploadUrl: string | null;
+  cloudinarySecureUrl: string | null;
+  externalVideoUrl: string | null;
+  youtubeUrl: string | null;
+  tiktokUrl: string | null;
+  facebookUrl: string | null;
+  thumbnailUrl: string | null;
+  latestVideoUrl: string | null;
+  latestUploadUrl: string | null;
+  latestCloudinarySecureUrl: string | null;
+  latestExternalVideoUrl: string | null;
+  latestTiktokUrl: string | null;
+  latestFacebookUrl: string | null;
+  latestYoutubeUrl: string | null;
+  latestThumbnailUrl: string | null;
+  latestSubmission: LeaderboardSubmission | null;
+}
+
+export interface CoinPackage {
+  id: string;
+  name: string;
+  priceNaira: number;
+  coins: number;
+  bonusCoins: number;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CoinTransaction {
+  id: string;
+  amount: number;
+  type: CoinTransactionType;
+  description: string | null;
+  reference: string | null;
+  metadata: unknown | null;
+  walletId: string;
+  userId: string | null;
+  createdAt: string;
+}
+
+export interface Wallet {
+  id: string;
+  balance: number;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
+  totalPurchased?: number;
+  totalSpent?: number;
+  transactions?: CoinTransaction[];
+}
+
+export interface Payment {
+  id: string;
+  provider: PaymentProvider;
+  reference: string;
+  amountNaira: number;
+  coins: number;
+  bonusCoins: number;
+  totalCoins: number;
+  status: PaymentStatus;
+  providerResponse: unknown | null;
+  paidAt: string | null;
+  userId: string;
+  coinPackageId: string;
+  competitionId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user?: User;
+  coinPackage?: CoinPackage;
+}
+
+export interface SiteSettings {
+  id: string;
+  singletonKey: string;
+  siteName: string;
+  siteTagline: string;
+  aboutTitle: string;
+  aboutContent: string;
+  contactEmail: string;
+  contactPhone: string;
+  lagosOfficeAddress: string | null;
+  whatsappNumber: string;
+  facebookUrl: string;
+  instagramUrl: string;
+  tiktokUrl: string;
+  youtubeUrl: string;
+  termsUrl: string | null;
+  privacyUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HomepageContent {
+  id: string;
+  singletonKey: string;
+  heroTitle: string;
+  heroSubtitle: string;
+  heroImageUrl: string | null;
+  primaryCtaText: string;
+  primaryCtaUrl: string;
+  secondaryCtaText: string | null;
+  secondaryCtaUrl: string | null;
+  featuredCompetitionId: string | null;
+  announcementText: string | null;
+  announcementIsActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Faq {
+  id: string;
+  question: string;
+  answer: string;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Sponsor {
+  id: string;
+  name: string;
+  logoUrl: string | null;
+  websiteUrl: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SponsoredAd {
+  id: string;
+  title: string;
+  productName: string;
+  description: string;
+  imageUrl: string | null;
+  videoUrl: string | null;
+  videoPublicId: string | null;
+  targetUrl: string | null;
+  whatsappUrl: string | null;
+  socialUrl: string | null;
+  placement: SponsoredAdPlacement;
+  placements: SponsoredAdPlacement[];
+  destinationType: SponsoredAdDestinationType;
+  destinationValue: string | null;
+  buttonText: string | null;
+  status: SponsoredAdStatus;
+  startsAt: string | null;
+  endsAt: string | null;
+  sortOrder: number;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  displayPriority: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ManualVotePayment {
+  id: string;
+  paymentReference: string | null;
+  contestantId: string;
+  competitionId: string;
+  contestantCode: string;
+  voterName: string;
+  voterPhone: string;
+  voterEmail: string | null;
+  amountPaid: number;
+  votePriceNaira: number;
+  votesCalculated: number;
+  voteQuantity: number | null;
+  expectedAmountNaira: number | null;
+  transferReference: string | null;
+  paymentNarration: string | null;
+  proofImageUrl: string | null;
+  proofPublicId: string | null;
+  proofMeta: JsonValue | null;
+  note: string | null;
+  bankNameSnapshot: string | null;
+  bankAccountNameSnapshot: string | null;
+  bankAccountNumberSnapshot: string | null;
+  paymentInstructionsSnapshot: string | null;
+  status: ManualVotePaymentStatus;
+  adminNote: string | null;
+  verifiedAt: string | null;
+  submittedAt: string | null;
+  confirmedAt: string | null;
+  rejectedAt: string | null;
+  cancelledAt: string | null;
+  verifiedById: string | null;
+  createdAt: string;
+  updatedAt: string;
+  contestant?: Contestant;
+  competition?: Competition;
+  verifiedBy?: User;
+}
+
+export interface CompetitionRules {
+  id: string;
+  singletonKey: string;
+  title: string;
+  content: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContactMessage {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  subject: string;
+  message: string;
+  status: ContactMessageStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UploadResponse {
+  secureUrl: string;
+  publicId: string;
+  resourceType: string;
+  format: string;
+  bytes: number;
+  duration?: number;
+}
+
+export interface CompetitionWinner {
+  id: string;
+  placement: WinnerPlacement;
+  prizeAmount: string | null;
+  totalVotes: number;
+  totalOnlineEngagement: number;
+  engagementScore: number;
+  tokenScore: number;
+  combinedScore: number;
+  declaredAt: string;
+  competitionId: string;
+  contestantId: string;
+  contestant?: Contestant;
+  competition?: Competition;
+}
+```
+
+## Endpoint Reference
+
+Each path below is shown as the actual HTTP path.
+
+### Health
+
+| Method | Path | Auth | Roles |
+| --- | --- | --- | --- |
+| `GET` | `/health` | Public | None |
+
+Success:
+
+```json
+{
+  "status": "ok",
+  "service": "novorivera-backend"
+}
+```
+
+Common errors: none expected.
+
+### Auth
+
+| Method | Path | Auth | Roles |
+| --- | --- | --- | --- |
+| `POST` | `/api/auth/register` | Public | None |
+| `POST` | `/api/auth/login` | Public | None |
+| `GET` | `/api/auth/me` | Required | Any active user |
+
+`POST /api/auth/register`
+
+Body:
+
+```json
+{
+  "name": "Jane Rivera",
+  "email": "jane@example.com",
+  "phone": "+2348012345678",
+  "password": "password123",
+  "displayName": "Jane Star",
+  "bio": "Singer",
+  "age": 19,
+  "location": "Lagos",
+  "guardianName": "Parent Name",
+  "guardianPhone": "+2348012345678",
+  "photoUrl": "https://example.com/photo.jpg"
+}
+```
+
+Registration is contestant registration. The backend creates the user as a `CONTESTANT` and automatically creates a contestant profile in the current `ACTIVE` competition, falling back to the newest `PUBLISHED` competition. Voters do not register.
+
+If the registration form collects a photo before the user exists, upload it
+through the public registration image endpoint:
+
+```http
+POST /api/uploads/registration-image
+Content-Type: multipart/form-data
+
+file=<image file>
+```
+
+Use the returned `secureUrl` and `publicId` values in the registration body.
+Registration images accept JPG, JPEG, PNG, and WebP up to 5 MB. The former
+`POST /api/uploads/registration-video` route is retired and returns `400`.
+
+Success:
+
+```json
+{
+  "user": {
+    "id": "user-id",
+    "name": "Jane Rivera",
+    "email": "jane@example.com",
+    "phone": "+2348012345678",
+    "role": "CONTESTANT",
+    "isActive": true,
+    "createdAt": "2026-06-14T00:00:00.000Z",
+    "updatedAt": "2026-06-14T00:00:00.000Z"
+  },
+  "token": "jwt-token",
+  "contestant": {
+    "id": "contestant-id",
+    "contestantCode": "NRV-100001",
+    "displayName": "Jane Star",
+    "status": "PENDING",
+    "competitionId": "competition-id"
+  },
+  "submission": null
+}
+```
+
+New registrations no longer upload a video file. New contestant profiles are publicly visible immediately unless an admin rejects/removes them. Historical registration submissions and their video URL fields remain readable.
+
+Common errors: `400` invalid body or no active/default competition (`No active competition is currently open for registration.`), `409` email already registered.
+
+`POST /api/auth/login`
+
+Body:
+
+```json
+{
+  "email": "jane@example.com",
+  "password": "password123"
+}
+```
+
+Success: same `AuthResponse` shape as register.
+
+Common errors: `400` invalid body, `401` invalid email/password or inactive user.
+
+`GET /api/auth/me`
+
+Success:
+
+```json
+{
+  "user": {
+    "id": "user-id",
+    "email": "jane@example.com",
+    "name": "Jane Rivera",
+    "phone": "+2348012345678",
+    "role": "USER",
+    "isActive": true,
+    "createdAt": "2026-06-14T00:00:00.000Z",
+    "updatedAt": "2026-06-14T00:00:00.000Z"
+  }
+}
+```
+
+Common errors: `401`.
+
+### Users/Profile
+
+| Method | Path | Auth | Roles |
+| --- | --- | --- | --- |
+| `GET` | `/api/users/me` | Required | Any active user |
+| `PATCH` | `/api/users/me` | Required | Any active user |
+| `PATCH` | `/api/users/me/password` | Required | Any active user |
+
+`PATCH /api/users/me`
+
+Body:
+
+```json
+{
+  "name": "Jane Novo",
+  "phone": "+2348099999999"
+}
+```
+
+Success:
+
+```json
+{
+  "user": {
+    "id": "user-id",
+    "name": "Jane Novo",
+    "email": "jane@example.com",
+    "phone": "+2348099999999",
+    "role": "USER",
+    "isActive": true,
+    "createdAt": "2026-06-14T00:00:00.000Z",
+    "updatedAt": "2026-06-14T00:00:00.000Z"
+  }
+}
+```
+
+Request params/query params: none.
+
+Common errors: `400`, `401`, `404`.
+
+`PATCH /api/users/me/password`
+
+Body:
+
+```json
+{
+  "currentPassword": "password123",
+  "newPassword": "newpassword123"
+}
+```
+
+Success:
+
+```json
+{
+  "success": true
+}
+```
+
+Common errors: `400`, `401`, `404`.
+
+### Public CMS
+
+| Method | Path | Auth | Roles |
+| --- | --- | --- | --- |
+| `GET` | `/api/site-settings` | Public | None |
+| `GET` | `/api/homepage` | Public | None |
+| `GET` | `/api/faqs` | Public | None |
+| `GET` | `/api/sponsors` | Public | None |
+| `GET` | `/api/rules` | Public | None |
+
+Request params/query params/body: none.
+
+Success examples:
+
+```json
+{
+  "id": "settings-id",
+  "singletonKey": "default",
+  "siteName": "NovoRivera",
+  "siteTagline": "Online competition platform",
+  "aboutTitle": "About NovoRivera",
+  "aboutContent": "NovoRivera helps competitions run online.",
+  "contactEmail": "hello@novorivera.com",
+  "contactPhone": "",
+  "lagosOfficeAddress": null,
+  "whatsappNumber": "09026595713",
+  "facebookUrl": "",
+  "instagramUrl": "",
+  "tiktokUrl": "",
+  "youtubeUrl": "",
+  "termsUrl": null,
+  "privacyUrl": null,
+  "createdAt": "2026-06-14T00:00:00.000Z",
+  "updatedAt": "2026-06-14T00:00:00.000Z"
+}
+```
+
+`whatsappNumber` is the official public WhatsApp contact and is editable through authenticated `PATCH /api/admin/site-settings`. It is separate from `contactPhone`, which must not be inferred or overwritten when WhatsApp changes.
+
+`GET /api/faqs` returns active FAQs only, sorted by `sortOrder` then `createdAt`.
+
+```json
+[
+  {
+    "id": "faq-id",
+    "question": "How do I vote?",
+    "answer": "Buy internal coins and vote for registered contestants.",
+    "sortOrder": 1,
+    "isActive": true,
+    "createdAt": "2026-06-14T00:00:00.000Z",
+    "updatedAt": "2026-06-14T00:00:00.000Z"
+  }
+]
+```
+
+`GET /api/sponsors` returns active sponsors only, sorted by `sortOrder` then `createdAt`.
+
+Common errors: none expected for singleton reads; standard `500` if database unavailable.
+
+### Contact
+
+| Method | Path | Auth | Roles |
+| --- | --- | --- | --- |
+| `POST` | `/api/contact` | Public | None |
+
+Body:
+
+```json
+{
+  "name": "Visitor",
+  "email": "visitor@example.com",
+  "phone": "+2348000000000",
+  "subject": "Support",
+  "message": "I need help."
+}
+```
+
+Success:
+
+```json
+{
+  "id": "message-id",
+  "name": "Visitor",
+  "email": "visitor@example.com",
+  "phone": "+2348000000000",
+  "subject": "Support",
+  "message": "I need help.",
+  "status": "NEW",
+  "createdAt": "2026-06-14T00:00:00.000Z",
+  "updatedAt": "2026-06-14T00:00:00.000Z"
+}
+```
+
+Common errors: `400` invalid body.
+
+### Uploads
+
+Cloudinary credentials are backend-only. Do not store or use `CLOUDINARY_API_SECRET` in the frontend.
+
+| Method | Path | Auth | Roles |
+| --- | --- | --- | --- |
+| `POST` | `/api/uploads/video` | Required | `ADMIN`, `SUPER_ADMIN` (sponsored-ad media only) |
+| `POST` | `/api/uploads/image` | Required | Any active user |
+| `POST` | `/api/uploads/registration-image` | Public | None |
+| `POST` | `/api/uploads/registration-video` | Public compatibility route | Retired; always `400` |
+| `POST` | `/api/uploads/payment-proof` | Public | None |
+
+Request:
+
+- `multipart/form-data`
+- Field name: `file`
+- Admin sponsored-ad video uploads accept MP4, MOV, WebM, AVI, MKV, and 3GP.
+- Image route accepts `image/*` only.
+- Admin ad video max size is configured by `MAX_VIDEO_UPLOAD_SIZE_MB`, default `50` MB.
+- Registration image route accepts JPG, JPEG, PNG, and WebP, max `5` MB.
+- The registration-video route does not parse or upload a file; it returns `400 Registration video-file uploads are retired.`
+- Registration images use the fixed Cloudinary folder `novoriviera/registration-images`.
+- Payment proof route accepts only JPG, JPEG, PNG, and WebP images.
+- Payment proof max size is configured by `MAX_PAYMENT_PROOF_UPLOAD_SIZE_MB`, default `5` MB.
+- Payment proofs upload to the fixed Cloudinary folder `novoriviera/payment-proofs`.
+
+Success:
+
+```json
+{
+  "secureUrl": "https://res.cloudinary.com/cloud/image/upload/novoriviera/registration-images/photo.jpg",
+  "publicId": "novoriviera/registration-images/photo",
+  "resourceType": "image",
+  "format": "jpg",
+  "bytes": 1048576
+}
+```
+
+Use the image response `secureUrl` and `publicId` with the contestant photo update endpoint. Cloudinary API credentials and signatures are never returned.
+
+Use `POST /api/uploads/registration-image` before `POST /api/auth/register` when the new-user form uploads a photo before authentication. Send the returned `secureUrl` as `photoUrl` and `publicId` as `photoPublicId`.
+
+TikTok submission links are retired. `Submission.tiktokUrl` is retained only for historical read responses; new TikTok URLs are rejected.
+
+Payment-proof voting is an intent-based flow. `POST /api/uploads/payment-proof` is public and must receive `file` plus `paymentReference`; it associates the uploaded proof server-side. Do not put its `secureUrl` in a public-vote JSON payload. The authoritative request and response contract is in **Manual Public Voting** below.
+
+Common errors: `400` retired competition video upload, missing file, or unsupported/invalid format; `401` for auth-required upload routes; `413` file too large; `502` Cloudinary upload failure; `503` Cloudinary not configured. All application errors are JSON responses.
+
+### Manual Public Voting (Authoritative Current Contract)
+
+All paths below include the global `/api` prefix. This is a public, manual-bank-transfer workflow; no voter account is required. The only supported client sequence is:
+
+1. Read vote info.
+2. Create an intent.
+3. Transfer the exact amount using the returned `paymentReference` as narration.
+4. Upload proof, associating it to that same reference.
+5. Submit payer details.
+6. An `ADMIN` or `SUPER_ADMIN` confirms or rejects it.
+
+Do not use the historical amount-based payload. `POST /api/public-votes` remains supported only as an alias for the same current submission DTO as `/submit`.
+
+```ts
+type ManualVotePaymentStatus =
+  | "INTENT_CREATED"
+  | "SUBMITTED"
+  | "CONFIRMED"
+  | "PENDING" // legacy database enum; current routes never create it
+  | "APPROVED" // legacy database enum; current routes never create it
+  | "REJECTED"
+  | "CANCELLED"; // no route transitions to it
+
+type ManualVotePaymentEventType =
+  | "INTENT_CREATED"
+  | "PROOF_ATTACHED"
+  | "TRANSFER_SUBMITTED"
+  | "CONFIRMED"
+  | "REJECTED"
+  | "CANCELLED"
+  | "CREDIT_REVERSED";
+
+type IsoDate = string;
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+```
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/contestants/code/:contestantCode/vote-info` | Public | Display contestant, price, bank and voting-window information. |
+| `POST` | `/api/public-votes/intents` | Public | Create a reference and amount snapshot. |
+| `POST` | `/api/uploads/payment-proof` | Public multipart | Upload and attach proof to an unsubmitted intent. |
+| `POST` | `/api/public-votes/submit` | Public | Submit an intent after proof is attached. |
+| `POST` | `/api/public-votes` | Public | Supported legacy path; exactly the same handler and DTO as `/submit`. |
+| `GET` | `/api/admin/public-votes` | Bearer JWT | List manual vote payments. `ADMIN`/`SUPER_ADMIN` only. |
+| `GET` | `/api/admin/public-votes/:id` | Bearer JWT | Read one payment. `ADMIN`/`SUPER_ADMIN` only. |
+| `PATCH` | `/api/admin/public-votes/:id/status` | Bearer JWT | Confirm or reject. `ADMIN`/`SUPER_ADMIN` only. |
+
+#### Vote info
+
+`GET /api/contestants/code/:contestantCode/vote-info`
+
+```ts
+interface VoteInfoResponse {
+  contestant: {
+    id: string;
+    contestantCode: string;
+    displayName: string;
+    photoUrl: string | null;
+    status: "PENDING" | "APPROVED" | "REJECTED" | "ELIMINATED";
+  };
+  competition: { id: string; title: string; slug: string; bannerUrl: string | null };
+  votePriceNaira: number;
+  votingOpen: boolean;
+  votingStatusMessage:
+    | "Manual voting is not enabled."
+    | "Voting has not started yet."
+    | "Voting has ended."
+    | "Voting is open.";
+  votingStartsAt: IsoDate | null;
+  votingEndsAt: IsoDate | null;
+  bankName: string | null;
+  accountName: string | null;
+  accountNumber: string | null;
+  paymentInstructions: string | null;
+  requiredNarration: string; // contestant code (informational only; do not use it for an intent transfer)
+  contestantCode: string;
+}
+```
+
+This endpoint returns `404 { message: "Vote information not found", error: "Not Found", statusCode: 404 }` when the contestant does not exist/is `REJECTED` or `ELIMINATED`, or the competition has `manualVotingEnabled=false`. It does not enforce `MANUAL_BANK_TRANSFER_VOTING_ENABLED`; the intent endpoint does. It can return `200` with `votingOpen=false`; in that state do not offer intent creation.
+
+#### Create payment intent
+
+`POST /api/public-votes/intents` with JSON:
+
+```ts
+interface CreateManualVoteIntentRequest {
+  voteQuantity: number; // required integer, minimum 1
+  contestantCode?: string;
+  contestantId?: string;
+}
+
+interface CreateManualVoteIntentResponse {
+  paymentReference: string;
+  contestant: { id: string; contestantCode: string; displayName: string };
+  voteQuantity: number;
+  expectedAmountNaira: number; // competition.votePriceNaira * voteQuantity
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  paymentInstructions: string;
+  requiredNarration: string; // exactly paymentReference
+}
+```
+
+Exactly one contestant identifier is not required: supplying both selects by `contestantCode`; supplying neither returns `400` with `Contestant code or ID is required`. `paymentReference` has the generated format `NRV-` followed by 10 uppercase hexadecimal characters, e.g. `NRV-1A2B3C4D5E`. It is the transfer narration. The response intentionally does **not** include a `status` property; it creates a database payment with lifecycle status `INTENT_CREATED`.
+
+The backend snapshots the price, amount and bank details at creation: `votePriceNaira`, `voteQuantity`, `expectedAmountNaira`, `bankNameSnapshot`, `bankAccountNameSnapshot`, `bankAccountNumberSnapshot`, and `paymentInstructionsSnapshot`. Competition-specific bank values win; otherwise the server environment defaults are used. The frontend must display and transfer `expectedAmountNaira` exactly; it cannot override the price or amount.
+
+`400` is returned when manual bank transfer is globally disabled (`Manual bank-transfer voting is currently unavailable`), the contestant is ineligible, manual voting is disabled for that competition, or its voting window is closed. `404` is `Contestant not found`. A rare reference-generation collision exhaustion is `409 Unable to generate payment reference`.
+
+#### Upload payment proof
+
+`POST /api/uploads/payment-proof` is `multipart/form-data`, public, with exactly these meaningful fields:
+
+```ts
+const form = new FormData();
+form.append("file", imageFile); // required
+form.append("paymentReference", intent.paymentReference); // required, plain text
+```
+
+`file` is required. It must have both an allowed MIME type and extension: JPEG (`image/jpeg`, `.jpg`/`.jpeg`), PNG (`image/png`, `.png`), or WebP (`image/webp`, `.webp`). The maximum is `MAX_PAYMENT_PROOF_UPLOAD_SIZE_MB` MiB (default `5`; the configured positive integer is authoritative). The endpoint returns:
+
+```ts
+interface PaymentProofUploadResponse {
+  secureUrl: string;
+  publicId: string;
+  resourceType: string; // Cloudinary returns "image"
+  format: string | undefined;
+  bytes: number;
+}
+```
+
+The server immediately associates `secureUrl`, `publicId`, and proof metadata `{ bytes, format }` with the payment identified by `paymentReference`, and adds a `PROOF_ATTACHED` event. The frontend must not send `secureUrl` or `publicId` again in the submission request. Proof is mandatory before submission: without both stored URL and public ID, submit returns `400 Upload payment proof for this payment reference before submission`.
+
+Uploading proof requires an existing `INTENT_CREATED` payment. Unknown reference is `404 Payment intent not found`; any other payment state is `400 Proof can only be attached to an unsubmitted payment intent`. Missing reference is `400 paymentReference is required to associate a proof`; missing file is `400 File is required in the multipart/form-data field named "file"`; invalid type is `400 Invalid payment proof file type. Upload a JPG, JPEG, PNG, or WebP image`; oversize is `413 Payment proof image exceeds the {configured} MB limit`. Upload-service errors are `503 Cloudinary is not configured` or `502 Payment proof upload service failed. Please try again`.
+
+#### Submit payer details
+
+Use either supported endpoint: `POST /api/public-votes/submit` (preferred) or `POST /api/public-votes` (legacy alias). Send JSON:
+
+```ts
+interface SubmitManualVotePaymentRequest {
+  paymentReference: string; // required
+  voterName: string; // required string
+  voterPhone: string; // required string
+  voterEmail?: string; // optional, must be an email when present
+  transferReference?: string;
+  note?: string;
+}
+```
+
+There are no DTO maximum lengths, no non-empty validators, and no phone-format validator. `voteQuantity` has only integer + minimum-one validation; it has no maximum. Unknown JSON properties are rejected globally. All omitted required DTO fields and invalid types produce `400` Nest validation errors; empty strings pass `@IsString()`.
+
+The successful response is the following flat database payment object (no nested contestant/competition/events):
+
+```ts
+interface ManualVotePaymentResponse {
+  id: string;
+  paymentReference: string | null;
+  contestantCode: string;
+  voterName: string;
+  voterPhone: string;
+  voterEmail: string | null;
+  amountPaid: number;
+  votePriceNaira: number;
+  votesCalculated: number;
+  voteQuantity: number | null;
+  expectedAmountNaira: number | null;
+  transferReference: string | null;
+  paymentNarration: string | null;
+  proofImageUrl: string | null;
+  proofPublicId: string | null;
+  proofMeta: JsonValue | null; // currently { bytes: number, format?: string }
+  note: string | null;
+  bankNameSnapshot: string | null;
+  bankAccountNameSnapshot: string | null;
+  bankAccountNumberSnapshot: string | null;
+  paymentInstructionsSnapshot: string | null;
+  status: ManualVotePaymentStatus; // success here is "SUBMITTED"
+  adminNote: string | null;
+  verifiedAt: IsoDate | null;
+  submittedAt: IsoDate | null;
+  confirmedAt: IsoDate | null;
+  rejectedAt: IsoDate | null;
+  cancelledAt: IsoDate | null;
+  createdAt: IsoDate;
+  updatedAt: IsoDate;
+  contestantId: string;
+  competitionId: string;
+  verifiedById: string | null;
+}
+```
+
+`404 Payment intent not found` means the reference is unknown. A status other than `INTENT_CREATED` returns `400 Payment intent has already been submitted or closed`. The sequence is atomic; a race returns `409 Payment intent was updated concurrently; retry the request`.
+
+#### Admin list, detail, confirmation and rejection
+
+All admin routes require `Authorization: Bearer <JWT>` for a user with role `ADMIN` or `SUPER_ADMIN`; unauthenticated/insufficient-role requests are rejected by the auth/roles guards.
+
+`GET /api/admin/public-votes?status=SUBMITTED&competitionId=<id>&contestantCode=NRV-...` returns `ManualVotePaymentAdminResponse[]` (an unpaginated array sorted newest `createdAt` first). Every query parameter is optional; `status` should be a `ManualVotePaymentStatus` value. `GET /api/admin/public-votes/:id` returns one identical object or `404 Public vote payment not found`.
+
+```ts
+interface ManualVotePaymentAdminResponse extends ManualVotePaymentResponse {
+  contestant: {
+    id: string; contestantCode: string; displayName: string; bio: string | null;
+    age: number | null; location: string | null; guardianName: string | null;
+    guardianPhone: string | null; photoUrl: string | null; photoPublicId: string | null;
+    photoMeta: JsonValue | null; status: string; isPremium: boolean;
+    premiumExpiresAt: IsoDate | null; totalVotes: number; totalOnlineEngagement: number;
+    createdAt: IsoDate; updatedAt: IsoDate; userId: string | null; competitionId: string;
+  };
+  competition: {
+    id: string; title: string; slug: string; description: string | null; bannerUrl: string | null;
+    status: string; startDate: IsoDate | null; endDate: IsoDate | null;
+    prizeFirst: string | null; prizeSecond: string | null; prizeThird: string | null;
+    rules: string | null; manualVotingEnabled: boolean; votingEnabled: boolean;
+    votingStartsAt: IsoDate | null; votingEndsAt: IsoDate | null; votePriceNaira: number;
+    paymentBankName: string | null; paymentAccountName: string | null;
+    paymentAccountNumber: string | null; paymentInstructions: string | null;
+    createdAt: IsoDate; updatedAt: IsoDate; ownerId: string | null;
+  };
+  verifiedBy: {
+    id: string; name: string; email: string; phone: string | null; passwordHash: string;
+    role: string; isActive: boolean; createdAt: IsoDate; updatedAt: IsoDate;
+  } | null;
+  credit: {
+    id: string; voteQuantity: number; createdAt: IsoDate; manualVotePaymentId: string;
+    contestantId: string; competitionId: string; confirmedById: string;
+  } | null;
+  events: Array<{
+    id: string; type: ManualVotePaymentEventType; metadata: JsonValue | null;
+    createdAt: IsoDate; manualVotePaymentId: string; actorId: string | null;
+  }>;
+}
+```
+
+This is the raw Prisma `include` response. In particular, `verifiedBy.passwordHash` is currently included by the backend; a frontend must never render, persist, or expose it. It is documented here solely because it is in the actual current response.
+
+Confirmation and rejection use one endpoint and one exact DTO:
+
+```ts
+// PATCH /api/admin/public-votes/:id/status
+interface UpdateManualVotePaymentStatusRequest {
+  status: "CONFIRMED" | "REJECTED";
+  adminNote?: string;
+}
+```
+
+The successful response is `ManualVotePaymentResponse` (flat, no includes). Permitted transitions are only `INTENT_CREATED -> SUBMITTED -> CONFIRMED` or `INTENT_CREATED -> SUBMITTED -> REJECTED`; proof attachment leaves the status at `INTENT_CREATED`. `CONFIRMED` increments the contestant total by the original `voteQuantity` once and creates one credit. Repeating `CONFIRMED` on an already confirmed payment is idempotent: it returns `200` with the existing payment and does not add votes or another credit. Repeating `REJECTED` is likewise idempotent. Any other origin state returns `400 Only submitted payments can be confirmed` or `400 Only submitted payments can be rejected`; another status string returns `400 Status must be CONFIRMED or REJECTED`; a concurrent update can return `409 Payment was updated concurrently; retry the request`.
+
+There is no public cancellation endpoint, no admin cancellation endpoint, and no cancellation/rejection-reason field separate from `adminNote`. `CANCELLED`, `cancelledAt`, and cancellation event enum values exist in the schema but are not reached by these controllers. Rejection stores the optional `adminNote` in `adminNote` and emits a `REJECTED` event. Do not assume that a rejected or confirmed payment can be reopened.
+
+#### Configuration, rate limits, and errors
+
+- `MANUAL_BANK_TRANSFER_VOTING_ENABLED=false` blocks only `POST /api/public-votes/intents`, returning `400 Manual bank-transfer voting is currently unavailable`. It does not hide vote-info or add a guard to upload/submit; frontend behavior should disable the whole flow from the intent failure.
+- `PAYSTACK_VOTING_ENABLED=false` blocks the separate authenticated `POST /api/payments/coin-purchase/init` flow with `400 Paystack voting payments are temporarily unavailable`. It does not affect manual-bank endpoints. Do not invoke Paystack for this manual flow.
+- `manualVotingEnabled=false` causes vote-info `404` and intent `400 Manual voting is not enabled`. `votingEnabled=false`, not-yet-open, or ended gives intent `400` with the computed voting-window message.
+- Each call to any public-vote intent/submit route (`/intents`, `/submit`, or `/`) shares an in-memory per-IP limit of 12 requests per rolling 60 seconds. Excess requests receive `429 Too many vote payment requests. Please try again later.` Uploads are not counted by this guard.
+- Standard Nest errors use `{ message: string | string[]; error: string; statusCode: number }`. Relevant codes are `400` validation/business state, `401` missing/invalid JWT on admin calls, `403` authenticated non-admin, `404` missing record, `409` concurrent/reference collision, `413` oversize proof, `429` rate limit, `502` Cloudinary failure, and `503` Cloudinary configuration missing.
+
+### Sponsored Ads
+
+Public ad reads only return `ACTIVE` ads whose date window is currently valid. Ads are ordered by `sortOrder` ascending, then newest first. In admin UI, label `sortOrder` as **Display Priority**; lower numbers appear first. The frontend should render ads in non-blocking slots and should never place an ad modal or forced interstitial inside voting or submission flows.
+
+| Method | Path | Auth | Roles |
+| --- | --- | --- | --- |
+| `GET` | `/api/ads?placement=HOME_TOP` | Public | None |
+| `GET` | `/api/ads?placement=VOTE_PAGE` | Public | None |
+| `POST` | `/api/ads/:id/click` | Public | None |
+| `POST` | `/api/ads/:id/impression` | Public | None |
+| `POST` | `/api/admin/ads` | Required | `ADMIN`, `SUPER_ADMIN` |
+| `GET` | `/api/admin/ads` | Required | `ADMIN`, `SUPER_ADMIN` |
+| `GET` | `/api/admin/ads/:id` | Required | `ADMIN`, `SUPER_ADMIN` |
+| `PATCH` | `/api/admin/ads/:id` | Required | `ADMIN`, `SUPER_ADMIN` |
+| `DELETE` | `/api/admin/ads/:id` | Required | `ADMIN`, `SUPER_ADMIN` |
+
+Create body:
+
+```json
+{
+  "title": "Leaderboard sponsor",
+  "productName": "Novo Boost",
+  "description": "Promoted product for contestants",
+  "imageUrl": "https://res.cloudinary.com/cloud/image/upload/novorivera/ad.jpg",
+  "videoUrl": "https://res.cloudinary.com/cloud/video/upload/novorivera/ad.mp4",
+  "videoPublicId": "novorivera/ad",
+  "placements": ["HOME_TOP", "LEADERBOARD", "VOTE_PAGE"],
+  "destinationType": "WHATSAPP",
+  "destinationValue": "08012345678",
+  "buttonText": "Chat on WhatsApp",
+  "status": "ACTIVE",
+  "startsAt": "2026-07-01T00:00:00.000Z",
+  "endsAt": "2026-08-01T00:00:00.000Z",
+  "sortOrder": 1
+}
+```
+
+`placements` is preferred and must contain at least one location. Valid values are `HOME_TOP`, `HOME_MIDDLE`, `LEADERBOARD`, `COMPETITION_PAGE`, `CONTESTANT_PAGE`, and `VOTE_PAGE`. The legacy single `placement` field is still accepted. Destination types are `WEBSITE`, `WHATSAPP`, `FACEBOOK`, `INSTAGRAM`, `TIKTOK`, `YOUTUBE`, and `OTHER`. If `destinationType` is `WHATSAPP` and `destinationValue` is a phone number, the backend normalizes Nigerian local numbers such as `08012345678` to `https://wa.me/2348012345678`. If `destinationValue` is already an HTTP URL, it is preserved. `targetUrl` is generated/resolved where practical; legacy `targetUrl`, `whatsappUrl`, and `socialUrl` remain compatible.
+
+`PATCH /api/admin/ads/:id` accepts any subset of the create fields. Nullable media/link/window fields can be sent as `null` to clear them.
+
+Public response:
+
+```json
+[
+  {
+    "id": "ad-id",
+    "title": "Leaderboard sponsor",
+    "productName": "Novo Boost",
+    "description": "Promoted product for contestants",
+    "imageUrl": "https://res.cloudinary.com/cloud/image/upload/novorivera/ad.jpg",
+    "videoUrl": "https://res.cloudinary.com/cloud/video/upload/novorivera/ad.mp4",
+    "videoPublicId": "novorivera/ad",
+    "targetUrl": "https://wa.me/2348012345678",
+    "whatsappUrl": "https://wa.me/2348012345678",
+    "socialUrl": null,
+    "placement": "LEADERBOARD",
+    "placements": ["HOME_TOP", "LEADERBOARD", "VOTE_PAGE"],
+    "destinationType": "WHATSAPP",
+    "destinationValue": "08012345678",
+    "buttonText": "Chat on WhatsApp",
+    "status": "ACTIVE",
+    "startsAt": "2026-07-01T00:00:00.000Z",
+    "endsAt": "2026-08-01T00:00:00.000Z",
+    "sortOrder": 1,
+    "clicks": 0,
+    "impressions": 0,
+    "ctr": 0,
+    "displayPriority": 1,
+    "createdAt": "2026-06-26T00:00:00.000Z",
+    "updatedAt": "2026-06-26T00:00:00.000Z"
+  }
+]
+```
+
+For navigation, use the resolved `targetUrl`. Call the click endpoint before or while opening the selected destination. Call the impression endpoint when an ad slot becomes visible enough to count as viewed. `POST /api/ads/:id/click` and `POST /api/ads/:id/impression` are public and do not require auth.
+
+Analytics: all admin ad responses include `impressions`, `clicks`, and `ctr`, where `ctr = clicks / impressions * 100`. If impressions is `0`, `ctr` is `0`.
+
+Admins upload ad images with `/api/uploads/image` and ad videos with `/api/uploads/video`, then save `secureUrl` as `imageUrl` or `videoUrl` and `publicId` as `videoPublicId` where relevant. The video endpoint is now admin-only and retained solely for sponsored-ad creative media; its default max remains 50 MB.
+
+Admin create/update/delete writes `AdminAuditLog` entries with actions `SPONSORED_AD_CREATE`, `SPONSORED_AD_UPDATE`, and `SPONSORED_AD_DELETE`.
+
+### Competitions
+
+| Method | Path | Auth | Roles |
+| --- | --- | --- | --- |
+| `GET` | `/api/competitions` | Public, optional token | None; admins see all statuses |
+| `GET` | `/api/competitions/:id` | Public, optional token | None; admins see all statuses |
+
+`GET /api/competitions`
+
+- Params: none.
+- Query: none.
+- Public response includes only competitions with `PUBLISHED` or `ACTIVE` status.
+- If an admin token is supplied, all statuses can be returned.
+
+Success:
+
+```json
+[
+  {
+    "id": "competition-id",
+    "title": "Novo Talent 2026",
+    "slug": "novo-talent-2026",
+    "description": "Online talent competition",
+    "bannerUrl": "https://example.com/banner.jpg",
+    "status": "PUBLISHED",
+    "startDate": "2026-07-01T00:00:00.000Z",
+    "endDate": "2026-08-01T00:00:00.000Z",
+    "prizeFirst": "First prize",
+    "prizeSecond": "Second prize",
+    "prizeThird": "Third prize",
+    "rules": "Competition rules",
+    "ownerId": "admin-user-id",
+    "createdAt": "2026-06-14T00:00:00.000Z",
+    "updatedAt": "2026-06-14T00:00:00.000Z"
+  }
+]
+```
+
+`GET /api/competitions/:id`
+
+- `:id` is the competition id. There is no slug lookup route in the backend.
+- Response includes `stages` ordered by `stageNumber`.
+
+Common errors: `404` competition not found.
+
+### Stages
+
+| Method | Path | Auth | Roles |
+| --- | --- | --- | --- |
+| `GET` | `/api/competitions/:competitionId/stages` | Public | None |
+| `GET` | `/api/stages/:stageId/submissions` | Public | None |
+| `GET` | `/api/stages/:stageId/votes/summary` | Public | None |
+
+Public competition details include stages via `GET /api/competitions/:id`. The standalone stage route also exposes ordered stages and active/submission/voting window flags.
+
+`GET /api/stages/:stageId/submissions`
+
+- Params: `stageId`.
+- Returns visible submissions, including contestant. New submissions are visible immediately; rejected submissions and rejected/eliminated contestants are excluded.
+
+Success:
+
+```json
+[
+  {
+    "id": "submission-id",
+    "title": "My stage entry",
+    "description": "Optional description",
+    "videoUrl": "https://example.com/video.mp4",
+    "uploadUrl": "https://example.com/uploaded-file",
+    "cloudinarySecureUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "externalVideoUrl": "https://example.com/video",
+    "tiktokUrl": "https://www.tiktok.com/@novo/video/123",
+    "facebookUrl": "https://facebook.com/reel/123",
+    "youtubeUrl": "https://youtube.com/watch?v=abc123",
+    "youtubeVideoId": "abc123",
+    "thumbnailUrl": "https://img.youtube.com/vi/abc123/hqdefault.jpg",
+    "status": "APPROVED",
+    "adminNote": null,
+    "contestantId": "contestant-id",
+    "stageId": "stage-id",
+    "createdAt": "2026-06-14T00:00:00.000Z",
+    "updatedAt": "2026-06-14T00:00:00.000Z",
+    "contestant": {
+      "id": "contestant-id",
+      "displayName": "Jane Star",
+      "status": "APPROVED"
+    }
+  }
+]
+```
+
+`GET /api/stages/:stageId/votes/summary`
+
+Success:
+
+```json
+{
+  "totalVotes": 25,
+  "totalCoinVotes": 25,
+  "votersCount": 5
+}
+```
+
+Common errors: `401`, `403`, `404`.
+
+### Contestants
+
+| Method | Path | Auth | Roles |
+| --- | --- | --- | --- |
+| `GET` | `/api/contestants/:id` | Public | None |
+| `POST` | `/api/competitions/:competitionId/contestants` | Required | Any active user; legacy/manual join |
+| `GET` | `/api/contestants/me` | Required | Any active user |
+| `GET` | `/api/contestants/me/:competitionId` | Required | Any active user |
+| `PATCH` | `/api/contestants/me/:competitionId/photo` | Required | Contestant owner |
+| `GET` | `/api/contestants/:id/votes` | Required | Any active user |
+
+`GET /api/contestants/:id`
+
+Returns registered entrants, excluding only `REJECTED` and `ELIMINATED` contestants. It does not expose private user data.
+
+Success:
+
+```json
+{
+  "id": "contestant-id",
+  "displayName": "Jane Star",
+  "bio": "Singer",
+  "age": 19,
+  "location": "Lagos",
+  "photoUrl": "https://res.cloudinary.com/cloud/image/upload/novorivera/photo.jpg",
+  "status": "APPROVED",
+  "isPremium": false,
+  "premiumExpiresAt": null,
+  "totalVotes": 100,
+  "totalOnlineEngagement": 150,
+  "rank": 1,
+  "entrantCount": 25,
+  "competition": {
+    "id": "competition-id",
+    "title": "Novo Viral Superstar"
+  },
+  "latestSubmission": {
+    "id": "submission-id",
+    "title": "My entry",
+    "videoUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "uploadUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "youtubeUrl": "https://youtube.com/watch?v=abc123",
+    "tiktokUrl": "https://www.tiktok.com/@novo/video/123",
+    "facebookUrl": "https://facebook.com/reel/123",
+    "instagramUrl": "https://instagram.com/reel/123",
+    "externalVideoUrl": "https://example.com/video",
+    "thumbnailUrl": "https://example.com/thumb.jpg",
+    "cloudinarySecureUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4"
+  },
+  "latestApprovedSubmission": {
+    "id": "submission-id",
+    "title": "My entry",
+    "videoUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "uploadUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "youtubeUrl": "https://youtube.com/watch?v=abc123",
+    "tiktokUrl": "https://www.tiktok.com/@novo/video/123",
+    "facebookUrl": "https://facebook.com/reel/123",
+    "instagramUrl": "https://instagram.com/reel/123",
+    "externalVideoUrl": "https://example.com/video",
+    "thumbnailUrl": "https://example.com/thumb.jpg",
+    "cloudinarySecureUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4"
+  },
+  "shareTitle": "Jane Star - Novo Viral Superstar",
+  "shareDescription": "Singer",
+  "shareImageUrl": "https://example.com/thumb.jpg"
+}
+```
+
+Common errors: `404` when contestant is rejected, eliminated, or does not exist.
+
+`PATCH /api/contestants/me/:competitionId/photo`
+
+Upload an `image/*` file to `POST /api/uploads/image`, then send its returned values:
+
+```json
+{
+  "photoUrl": "https://res.cloudinary.com/cloud/image/upload/novorivera/photo.jpg",
+  "photoPublicId": "novorivera/photo",
+  "photoMeta": {
+    "format": "jpg",
+    "bytes": 2048
+  }
+}
+```
+
+`photoUrl` must be a valid HTTPS URL. The current user must own the contestant profile for `competitionId`; no approval status is required for photo upload. The response includes the updated contestant, including `photoUrl`, `photoPublicId`, and `photoMeta`. Public contestant profiles and leaderboard entries expose only `photoUrl`; owner and admin contestant responses include all three fields.
+
+Common errors: `400` invalid URL/body, `401`, `404` contestant profile not found for the current user and competition.
+
+`POST /api/competitions/:competitionId/contestants`
+
+This endpoint remains available for existing clients and special admin/manual flows. The MVP frontend should use `POST /api/auth/register`, which creates the contestant profile automatically in the active/default competition.
+
+Body:
+
+```json
+{
+  "displayName": "Jane Star",
+  "bio": "Singer",
+  "age": 19,
+  "location": "Lagos",
+  "guardianName": "Parent Name",
+  "guardianPhone": "+2348012345678"
+}
+```
+
+Success:
+
+```json
+{
+  "id": "contestant-id",
+  "displayName": "Jane Star",
+  "bio": "Singer",
+  "age": 19,
+  "location": "Lagos",
+  "guardianName": "Parent Name",
+  "guardianPhone": "+2348012345678",
+  "status": "PENDING",
+  "isPremium": false,
+  "premiumExpiresAt": null,
+  "totalVotes": 0,
+  "totalOnlineEngagement": 0,
+  "userId": "user-id",
+  "competitionId": "competition-id",
+  "createdAt": "2026-06-14T00:00:00.000Z",
+  "updatedAt": "2026-06-14T00:00:00.000Z"
+}
+```
+
+Notes:
+
+- A user can have only one contestant profile per competition.
+- If the user's role is `USER`, registration updates the role to `CONTESTANT`.
+- Newly registered contestants start as `PENDING`.
+
+`GET /api/contestants/me`
+
+Returns current user's contestant profiles including competition.
+
+`GET /api/contestants/me/:competitionId`
+
+Returns the current user's contestant profile for one competition including competition.
+
+`GET /api/contestants/:id/votes`
+
+Success:
+
+```json
+{
+  "totalVotes": 25,
+  "totalCoinVotes": 25,
+  "votersCount": 5
+}
+```
+
+Common errors: `400`, `401`, `404`, `409`.
+
+### Submissions
+
+| Method | Path | Auth | Roles |
+| --- | --- | --- | --- |
+| `POST` | `/api/stages/:stageId/submissions` | Required | Any active user |
+| `GET` | `/api/contestants/me/submissions` | Required | Any active user |
+| `GET` | `/api/stages/:stageId/submissions` | Public | None |
+
+`POST /api/stages/:stageId/submissions`
+
+Body:
+
+```json
+{
+  "title": "My stage entry",
+  "description": "Optional description"
+}
+```
+
+Legacy upload metadata fields remain accepted for compatibility, but active frontend competition flows must not upload a new video file or populate them from an upload response. Historical records continue to expose those fields.
+
+Success:
+
+```json
+{
+  "id": "submission-id",
+  "title": "My stage entry",
+  "description": "Optional description",
+  "videoUrl": null,
+  "uploadUrl": null,
+  "youtubeUrl": null,
+  "youtubeVideoId": null,
+  "tiktokUrl": null,
+  "facebookUrl": null,
+  "instagramUrl": null,
+  "externalVideoUrl": null,
+  "thumbnailUrl": null,
+  "cloudinarySecureUrl": null,
+  "status": "APPROVED",
+  "adminNote": null,
+  "contestantId": "contestant-id",
+  "stageId": "stage-id",
+  "createdAt": "2026-06-14T00:00:00.000Z",
+  "updatedAt": "2026-06-14T00:00:00.000Z"
+}
+```
+
+Rules:
+
+- Stage must exist.
+- Current user must have a contestant profile in the stage competition. Missing profiles should register first through `/api/competitions/:competitionId/contestants`. `REJECTED` and `ELIMINATED` contestants receive `Your account or contestant profile is not allowed to submit entries. Please contact support.`
+- Current time must be inside the stage submission window when dates are set.
+- One submission per contestant per stage.
+- TikTok links are stored separately in `tiktokUrl`; the existing admin metadata endpoint manages that link without uploading the video file.
+Common errors: `400` outside window, missing contestant registration, or blocked contestant profile; `401`, `404`, `409`.
+
+### Leaderboard
+
+| Method | Path | Auth | Roles |
+| --- | --- | --- | --- |
+| `GET` | `/api/competitions/:competitionId/leaderboard` | Public | None |
+
+Query params:
+
+- `featuredFirst=true`: premium contestants sort before non-premium contestants.
+- `mode=votes`: sort by `totalVotes`. Default.
+- `mode=engagement`: sort by `totalOnlineEngagement`.
+- `mode=combined`: sort by `totalVotes + totalOnlineEngagement`.
+- `engagementWeight=50`: combined mode engagement weight. Default `50`.
+- `tokenWeight=50`: combined mode token vote weight. Default `50`.
+
+Combined mode uses simple normalization:
+
+- Highest engagement gets full `engagementWeight`.
+- Highest token votes gets full `tokenWeight`.
+- Other contestants are proportional.
+- `combinedScore = engagementScore + tokenScore`.
+
+Success:
+
+```json
+[
+  {
+    "rank": 1,
+    "entrantCount": 25,
+    "contestantId": "contestant-id",
+    "displayName": "Jane Star",
+    "photoUrl": "https://res.cloudinary.com/cloud/image/upload/novorivera/photo.jpg",
+    "status": "APPROVED",
+    "isPremium": true,
+    "totalVotes": 100,
+    "totalOnlineEngagement": 20,
+    "engagementScore": 50,
+    "tokenScore": 50,
+    "combinedScore": 100,
+    "videoUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "uploadUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "cloudinarySecureUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "externalVideoUrl": "https://example.com/video",
+    "tiktokUrl": "https://www.tiktok.com/@novo/video/123",
+    "facebookUrl": "https://facebook.com/reel/123",
+    "youtubeUrl": "https://youtube.com/watch?v=abc123",
+    "thumbnailUrl": "https://img.youtube.com/vi/abc123/hqdefault.jpg",
+    "latestVideoUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "latestUploadUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "latestCloudinarySecureUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+    "latestExternalVideoUrl": "https://example.com/video",
+    "latestTiktokUrl": "https://www.tiktok.com/@novo/video/123",
+    "latestFacebookUrl": "https://facebook.com/reel/123",
+    "latestYoutubeUrl": "https://youtube.com/watch?v=abc123",
+    "latestThumbnailUrl": "https://img.youtube.com/vi/abc123/hqdefault.jpg",
+    "latestSubmission": {
+      "id": "submission-id",
+      "title": "My entry",
+      "videoUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+      "uploadUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+      "cloudinarySecureUrl": "https://res.cloudinary.com/cloud/video/upload/entry.mp4",
+      "externalVideoUrl": "https://example.com/video",
+      "tiktokUrl": "https://www.tiktok.com/@novo/video/123",
+      "facebookUrl": "https://facebook.com/reel/123",
+      "youtubeUrl": "https://youtube.com/watch?v=abc123",
+      "thumbnailUrl": "https://img.youtube.com/vi/abc123/hqdefault.jpg"
+    }
+  }
+]
+```
+
+Registered entrants are included unless their contestant profile is `REJECTED` or `ELIMINATED`. Leaderboard rows include `photoUrl`, `totalVotes`, `totalOnlineEngagement`, `rank`, `entrantCount`, direct video fields from the latest approved visible submission, compatibility `latest*` video aliases, and `latestSubmission` when available. Rejected or deleted submissions are not returned.
+
+Common errors: `404` competition not found.
+
+### Winners
+
+| Method | Path | Auth | Roles |
+| --- | --- | --- | --- |
+| `GET` | `/api/competitions/:competitionId/winners` | Public | None |
+
+Success:
+
+```json
+[
+  {
+    "id": "winner-id",
+    "placement": "FIRST",
+    "prizeAmount": "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦500,000",
+    "totalVotes": 100,
+    "totalOnlineEngagement": 150,
+    "engagementScore": 50,
+    "tokenScore": 50,
+    "combinedScore": 100,
+    "competitionId": "competition-id",
+    "contestantId": "contestant-id",
+    "declaredAt": "2026-06-14T00:00:00.000Z",
+    "contestant": {
+      "id": "contestant-id",
+      "displayName": "Jane Star"
+    }
+  }
+]
+```
+
+Common errors: `404` competition not found.
+
+### Coin Packages
+
+| Method | Path | Auth | Roles |
+| --- | --- | --- | --- |
+| `GET` | `/api/coin-packages` | Public | None |
+
+Returns active packages only, sorted by `sortOrder` ascending then `createdAt` descending.
+
+Success:
+
+```json
+[
+  {
+    "id": "coin-package-id",
+    "name": "Starter Pack",
+    "priceNaira": 1000,
+    "coins": 100,
+    "bonusCoins": 10,
+    "isActive": true,
+    "sortOrder": 1,
+    "createdAt": "2026-06-14T00:00:00.000Z",
+    "updatedAt": "2026-06-14T00:00:00.000Z"
+  }
+]
+```
+
+Common errors: none expected.
+
+### Wallet
+
+Wallet, coin, and Paystack endpoints are legacy/future-use surfaces for the MVP. Registration and public voting do not require a wallet, coins, or Paystack. Voters should use the manual bank transfer flow in `POST /api/public-votes`.
+
+| Method | Path | Auth | Roles |
+| --- | --- | --- | --- |
+| `GET` | `/api/wallet/me` | Required | Any active user |
+| `GET` | `/api/wallet/me/transactions` | Required | Any active user |
+
+`GET /api/wallet/me`
+
+Success:
+
+```json
+{
+  "id": "wallet-id",
+  "balance": 110,
+  "userId": "user-id",
+  "createdAt": "2026-06-14T00:00:00.000Z",
+  "updatedAt": "2026-06-14T00:00:00.000Z",
+  "totalPurchased": 110,
+  "totalSpent": 0,
+  "transactions": [
+    {
+      "id": "transaction-id",
+      "amount": 110,
+      "type": "CREDIT",
+      "description": "Paystack coin purchase",
+      "reference": "NR-...",
+      "metadata": {
+        "paymentId": "payment-id",
+        "coinPackageId": "coin-package-id"
+      },
+      "walletId": "wallet-id",
+      "userId": "user-id",
+      "createdAt": "2026-06-14T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+`GET /api/wallet/me/transactions`
+
+Returns only `CoinTransaction[]`, newest first.
+
+Common errors: `401`.
+
+### Votes
+
+| Method | Path | Auth | Roles |
+| --- | --- | --- | --- |
+| `POST` | `/api/votes/cast` | Required | Any active user |
+| `GET` | `/api/contestants/:id/votes` | Required | Any active user |
+| `GET` | `/api/stages/:stageId/votes/summary` | Public | None |
+
+`POST /api/votes/cast`
+
+Body:
+
+```json
+{
+  "contestantId": "contestant-id",
+  "stageId": "stage-id",
+  "coinsToSpend": 10
+}
+```
+
+Success:
+
+```json
+{
+  "vote": {
+    "id": "vote-id",
+    "source": "COIN",
+    "quantity": 1,
+    "userId": "user-id",
+    "competitionId": "competition-id",
+    "stageId": "stage-id",
+    "contestantId": "contestant-id",
+    "createdAt": "2026-06-14T00:00:00.000Z"
+  },
+  "wallet": {
+    "id": "wallet-id",
+    "balance": 100,
+    "userId": "user-id",
+    "createdAt": "2026-06-14T00:00:00.000Z",
+    "updatedAt": "2026-06-14T00:00:00.000Z"
+  },
+  "coinTransaction": {
+    "id": "transaction-id",
+    "amount": -10,
+    "type": "DEBIT",
+    "description": "Vote for contestant Jane Star",
+    "reference": null,
+    "metadata": {
+      "contestantId": "contestant-id",
+      "stageId": "stage-id",
+      "coinsToSpend": 10,
+      "votesCredited": 1
+    },
+    "walletId": "wallet-id",
+    "userId": "user-id",
+    "createdAt": "2026-06-14T00:00:00.000Z"
+  },
+  "contestant": {
+    "id": "contestant-id",
+    "displayName": "Jane Star",
+    "totalVotes": 105,
+    "totalOnlineEngagement": 0,
+    "status": "APPROVED"
+  }
+}
+```
+
+Rules:
+
+- `coinsToSpend` must be an integer >= `10`.
+- `coinsToSpend` must be divisible by `10`.
+- `10` coins equal `1` vote.
+- Voter wallet must have enough balance.
+- Stage must be `ACTIVE`.
+- Current time must be inside the stage voting window when dates are set.
+- Contestant must be in the same competition as the stage.
+- Rejected or eliminated contestants cannot receive votes.
+- The code does not block votes for `PENDING` contestants; registered entrants stay visible unless they are `REJECTED` or `ELIMINATED`.
+
+Common errors: `400`, `401`, `404`.
+
+### Payments
+
+| Method | Path | Auth | Roles |
+| --- | --- | --- | --- |
+| `POST` | `/api/payments/coin-purchase/init` | Required | Any active user |
+| `GET` | `/api/payments/verify/:reference` | Required | Any active user |
+| `GET` | `/api/payments/me` | Required | Any active user |
+| `POST` | `/api/payments/webhook/paystack` | Public webhook | Valid Paystack signature |
+
+`POST /api/payments/coin-purchase/init`
+
+Body:
+
+```json
+{
+  "coinPackageId": "coin-package-id"
+}
+```
+
+Success:
+
+```json
+{
+  "authorizationUrl": "https://checkout.paystack.com/...",
+  "accessCode": "access_code",
+  "reference": "NR-1718323200000-uuid",
+  "amountNaira": 1000,
+  "totalCoins": 110
+}
+```
+
+`GET /api/payments/verify/:reference`
+
+Success:
+
+```json
+{
+  "payment": {
+    "id": "payment-id",
+    "provider": "PAYSTACK",
+    "reference": "NR-1718323200000-uuid",
+    "amountNaira": 1000,
+    "coins": 100,
+    "bonusCoins": 10,
+    "totalCoins": 110,
+    "status": "SUCCESS",
+    "providerResponse": {},
+    "paidAt": "2026-06-14T00:00:00.000Z",
+    "userId": "user-id",
+    "coinPackageId": "coin-package-id",
+    "competitionId": null,
+    "createdAt": "2026-06-14T00:00:00.000Z",
+    "updatedAt": "2026-06-14T00:00:00.000Z"
+  },
+  "walletBalance": 110
+}
+```
+
+`GET /api/payments/me`
+
+Returns current user's `Payment[]`, newest first.
+
+`POST /api/payments/webhook/paystack`
+
+- Public route for Paystack.
+- Requires `x-paystack-signature`.
+- Handles only `charge.success`.
+- Non-charge-success events return `{ "received": true, "ignored": true }`.
+- Frontend should not call this route.
+
+Common errors: `400` Paystack init/verify failure or missing secret config, `401`, `403` verifying another user's reference, `404`.
+
+### Admin CMS
+
+All routes require `Authorization: Bearer <admin-token>` and role `ADMIN` or `SUPER_ADMIN`.
+
+| Method | Path |
+| --- | --- |
+| `GET` | `/api/admin/site-settings` |
+| `PATCH` | `/api/admin/site-settings` |
+| `GET` | `/api/admin/homepage` |
+| `PATCH` | `/api/admin/homepage` |
+| `GET` | `/api/admin/faqs` |
+| `POST` | `/api/admin/faqs` |
+| `PATCH` | `/api/admin/faqs/:id` |
+| `DELETE` | `/api/admin/faqs/:id` |
+| `GET` | `/api/admin/sponsors` |
+| `POST` | `/api/admin/sponsors` |
+| `PATCH` | `/api/admin/sponsors/:id` |
+| `DELETE` | `/api/admin/sponsors/:id` |
+| `GET` | `/api/admin/rules` |
+| `PATCH` | `/api/admin/rules` |
+| `GET` | `/api/admin/contact-messages` |
+| `GET` | `/api/admin/contact-messages/:id` |
+| `PATCH` | `/api/admin/contact-messages/:id/status` |
+
+Example bodies:
+
+```json
+{
+  "siteName": "NovoRivera",
+  "siteTagline": "Online competition platform",
+  "aboutTitle": "About NovoRivera",
+  "aboutContent": "NovoRivera helps competitions run online.",
+  "contactEmail": "hello@novorivera.com",
+  "contactPhone": "+2348000000000",
+  "whatsappNumber": "09026595713",
+  "facebookUrl": "https://facebook.com/novorivera",
+  "instagramUrl": "https://instagram.com/novorivera",
+  "tiktokUrl": "https://tiktok.com/@novorivera",
+  "youtubeUrl": "https://youtube.com/@novorivera",
+  "termsUrl": "/terms",
+  "privacyUrl": "/privacy"
+}
+```
+
+```json
+{
+  "heroTitle": "Discover NovoRivera",
+  "heroSubtitle": "Join, compete, and vote online.",
+  "heroImageUrl": "https://example.com/hero.jpg",
+  "primaryCtaText": "View Competitions",
+  "primaryCtaUrl": "/competitions",
+  "secondaryCtaText": "Learn More",
+  "secondaryCtaUrl": "/about",
+  "featuredCompetitionId": "competition-id",
+  "announcementText": "Registration is open.",
+  "announcementIsActive": true
+}
+```
+
+```json
+{
+  "question": "How do I vote?",
+    "answer": "Buy internal coins and vote for registered contestants.",
+  "sortOrder": 1,
+  "isActive": true
+}
+```
+
+```json
+{
+  "name": "Sponsor Name",
+  "logoUrl": "https://example.com/logo.png",
+  "websiteUrl": "https://example.com",
+  "sortOrder": 1,
+  "isActive": true
+}
+```
+
+```json
+{
+  "title": "Competition Rules",
+  "content": "Rules content goes here.",
+  "isActive": true
+}
+```
+
+```json
+{
+  "status": "READ"
+}
+```
+
+Success responses are the updated/created/deleted model object, except list routes return arrays. Common errors: `400`, `401`, `403`, `404`.
+
+### Admin Coin Packages
+
+All routes require admin auth.
+
+| Method | Path |
+| --- | --- |
+| `POST` | `/api/admin/coin-packages` |
+| `GET` | `/api/admin/coin-packages` |
+| `PATCH` | `/api/admin/coin-packages/:id` |
+| `DELETE` | `/api/admin/coin-packages/:id` |
+
+Create/update body:
+
+```json
+{
+  "name": "Starter Pack",
+  "priceNaira": 1000,
+  "coins": 100,
+  "bonusCoins": 10,
+  "isActive": true,
+  "sortOrder": 1
+}
+```
+
+Success: `CoinPackage` for create/update/delete. `GET /api/admin/coin-packages` returns all packages, including inactive packages, sorted by `sortOrder` ascending then `createdAt` descending.
+
+Common errors: `400`, `401`, `403`, `404`.
+
+### Admin Competitions
+
+All routes require admin auth.
+
+| Method | Path |
+| --- | --- |
+| `POST` | `/api/competitions` |
+| `PATCH` | `/api/competitions/:id` |
+| `DELETE` | `/api/competitions/:id` |
+| `POST` | `/api/admin/competitions/:id/reset` |
+| `POST` | `/api/admin/competitions/:id/reset-votes` |
+| `POST` | `/api/competitions/:competitionId/declare-winners` |
+
+Create/update body:
+
+```json
+{
+  "title": "Novo Talent 2026",
+  "slug": "novo-talent-2026",
+  "description": "Online talent competition",
+  "bannerUrl": "https://example.com/banner.jpg",
+  "status": "PUBLISHED",
+  "startDate": "2026-07-01T00:00:00.000Z",
+  "endDate": "2026-08-01T00:00:00.000Z",
+  "prizeFirst": "First prize",
+  "prizeSecond": "Second prize",
+  "prizeThird": "Third prize",
+  "rules": "Competition rules",
+  "manualVotingEnabled": true,
+  "votingEnabled": true,
+  "votingStartsAt": "2026-07-01T00:00:00.000Z",
+  "votingEndsAt": "2026-08-01T00:00:00.000Z",
+  "votePriceNaira": 500,
+  "paymentBankName": "Novo Bank",
+  "paymentAccountName": "NovoRivera Votes",
+  "paymentAccountNumber": "1234567890",
+  "paymentInstructions": "Transfer and include contestant code."
+}
+```
+
+The manual voting fields above are set per competition through this same create/update endpoint. When `manualVotingEnabled` is `true`, public competition detail and `GET /api/contestants/code/:contestantCode/vote-info` expose the vote price, bank name, account name, account number, and payment instructions for that competition. `votingEnabled` defaults to `false`; set it to `true` and optionally use `votingStartsAt` / `votingEndsAt` to control when public manual vote submissions are accepted. When `manualVotingEnabled` is `false`, public competition detail hides the payment fields and vote-info returns `404`.
+
+Success: `Competition`.
+
+Common errors: `400`, `401`, `403`, `404`, `409` duplicate slug.
+
+`POST /api/admin/competitions/:id/reset`
+
+Soft-resets public competition data for a new cycle while preserving financial records. It marks contestants for the competition as rejected/hidden, rejects their submissions, resets public vote and engagement counters, clears declared winners, and writes a `COMPETITION_RESET` audit log. Manual vote payments and Paystack payment records are preserved.
+
+Success:
+
+```json
+{
+  "competitionId": "competition-id",
+  "contestantsArchived": 25,
+  "submissionsArchived": 25,
+  "winnersCleared": 3,
+  "manualVotePaymentsPreserved": true,
+  "paymentRecordsPreserved": true
+}
+```
+
+`POST /api/admin/competitions/:id/reset-votes`
+
+Resets only vote counters for a competition. It sets contestant `totalVotes` to
+`0`, rejects/archives manual vote payments so they no longer count, clears legacy
+vote rows, and writes a `COMPETITION_VOTES_RESET` audit log. It does not delete
+users, contestants, or submissions.
+
+Success:
+
+```json
+{
+  "competitionId": "competition-id",
+  "contestantsReset": 12,
+  "manualVotePaymentsRejected": 20,
+  "legacyVoteRecordsReset": 50,
+  "usersDeleted": false,
+  "contestantsDeleted": false,
+  "submissionsDeleted": false
+}
+```
+
+Declare winners body:
+
+```json
+{
+  "force": true
+}
+```
+
+Rules:
+
+- Uses combined leaderboard with 50% engagement and 50% token voting.
+- Stores `FIRST`, `SECOND`, and `THIRD` where enough non-rejected, non-eliminated contestants exist.
+- Prize amounts come from `prizeFirst`, `prizeSecond`, and `prizeThird`.
+- If winners already exist, rerun requires `SUPER_ADMIN` or `{ "force": true }`.
+
+### Admin Stages
+
+All routes require admin auth.
+
+| Method | Path |
+| --- | --- |
+| `POST` | `/api/competitions/:competitionId/stages` |
+| `GET` | `/api/competitions/:competitionId/stages` |
+| `PATCH` | `/api/stages/:id` |
+| `DELETE` | `/api/stages/:id` |
+| `POST` | `/api/stages/:stageId/eliminate-bottom` |
+
+Create/update body:
+
+```json
+{
+  "title": "Auditions",
+  "stageNumber": 1,
+  "description": "First stage",
+  "status": "ACTIVE",
+  "submissionStartDate": "2026-07-01T00:00:00.000Z",
+  "submissionEndDate": "2026-07-10T23:59:59.000Z",
+  "votingStartDate": "2026-07-11T00:00:00.000Z",
+  "votingEndDate": "2026-07-20T23:59:59.000Z",
+  "eliminationPercentage": 30
+}
+```
+
+`POST /api/stages/:stageId/eliminate-bottom` success:
+
+```json
+{
+  "affectedContestants": [
+    {
+      "id": "contestant-id",
+      "displayName": "Contestant",
+      "status": "ELIMINATED"
+    }
+  ]
+}
+```
+
+Rules:
+
+- `stageNumber` must be unique per competition.
+- Only one `ACTIVE` stage is allowed per competition.
+- `eliminationPercentage` must be between `0` and `100`.
+
+Common errors: `400`, `401`, `403`, `404`, `409`.
+
+### Admin Contestants
+
+All routes require admin auth.
+
+| Method | Path |
+| --- | --- |
+| `GET` | `/api/admin/contestants` |
+| `GET` | `/api/admin/contestants/:id` |
+| `PATCH` | `/api/admin/contestants/:id/status` |
+| `PATCH` | `/api/admin/contestants/:id/premium` |
+| `DELETE` | `/api/admin/contestants/:id` |
+| `POST` | `/api/admin/contestants/:contestantId/engagement` |
+
+Status body:
+
+```json
+{
+  "status": "APPROVED"
+}
+```
+
+Premium body:
+
+```json
+{
+  "isPremium": true,
+  "premiumExpiresAt": "2026-08-01T00:00:00.000Z"
+}
+```
+
+`DELETE /api/admin/contestants/:id` soft-removes a contestant from the public website by marking the contestant `REJECTED`, resetting public counters, rejecting submissions, and writing a `CONTESTANT_REMOVE` audit log. It does not delete the linked user account.
+
+Engagement body:
+
+```json
+{
+  "stageId": "stage-id",
+  "views": 100,
+  "likes": 25,
+  "comments": 10,
+  "shares": 5,
+  "watchScore": 10,
+  "platform": "TIKTOK",
+  "note": "Imported from manual review"
+}
+```
+
+Backward compatible simple body:
+
+```json
+{
+  "onlineEngagementCount": 25,
+  "note": "Imported from manual review"
+}
+```
+
+Breakdown total is computed as `views + likes + comments + shares + watchScore`.
+
+Success: contestant object. Lists include related `user` and `competition`, plus `photoUrl`, `photoPublicId`, and `photoMeta` when set.
+
+Common errors: `400`, `401`, `403`, `404`.
+
+### Admin Submissions
+
+All routes require admin auth.
+
+| Method | Path |
+| --- | --- |
+| `GET` | `/api/admin/submissions` |
+| `PATCH` | `/api/admin/submissions/:id/status` |
+| `PATCH` | `/api/admin/submissions/:id/youtube` |
+
+Status body:
+
+```json
+{
+  "status": "APPROVED",
+  "adminNote": "Looks good"
+}
+```
+
+YouTube body:
+
+```json
+{
+  "youtubeUrl": "https://youtube.com/watch?v=abc123",
+  "youtubeVideoId": "abc123",
+  "tiktokUrl": "https://www.tiktok.com/@novo/video/123",
+  "facebookUrl": "https://facebook.com/reel/123",
+  "instagramUrl": "https://instagram.com/reel/123",
+  "externalVideoUrl": "https://example.com/video",
+  "thumbnailUrl": "https://img.youtube.com/vi/abc123/hqdefault.jpg"
+}
+```
+
+Success: submission object. Admin list includes contestant, contestant user, contestant competition, and stage.
+
+All new entries are stored as `APPROVED`, appear publicly immediately, and appear in the admin dashboard under **Submissions**. Admins moderate content after upload, reject or delete invalid/inappropriate entries, and can update YouTube, TikTok, Facebook, Instagram, external video, and thumbnail links.
+
+Common errors: `400`, `401`, `403`, `404`.
+
+### Admin Wallets
+
+All routes require admin auth.
+
+| Method | Path |
+| --- | --- |
+| `GET` | `/api/admin/wallets` |
+| `GET` | `/api/admin/wallets/:userId` |
+| `POST` | `/api/admin/wallets/:userId/adjust` |
+
+Adjust body:
+
+```json
+{
+  "amount": 50,
+  "reason": "Manual credit for support correction"
+}
+```
+
+Use a negative `amount` to subtract coins. The backend rejects `0` and rejects adjustments that would make balance negative.
+
+Success:
+
+```json
+{
+  "wallet": {
+    "id": "wallet-id",
+    "balance": 160,
+    "userId": "user-id",
+    "createdAt": "2026-06-14T00:00:00.000Z",
+    "updatedAt": "2026-06-14T00:00:00.000Z"
+  },
+  "transaction": {
+    "id": "transaction-id",
+    "amount": 50,
+    "type": "ADJUSTMENT",
+    "description": "Manual credit for support correction",
+    "reference": null,
+    "metadata": {
+      "actorId": "admin-user-id"
+    },
+    "walletId": "wallet-id",
+    "userId": "user-id",
+    "createdAt": "2026-06-14T00:00:00.000Z"
+  }
+}
+```
+
+Common errors: `400`, `401`, `403`, `404`.
+
+### Admin Votes
+
+All routes require admin auth.
+
+| Method | Path |
+| --- | --- |
+| `GET` | `/api/admin/votes` |
+| `GET` | `/api/admin/exports/votes.csv` |
+
+Success: `Vote[]` including `user`, `contestant`, `stage`, and `competition`.
+
+Common errors: `401`, `403`.
+
+### Admin Payments
+
+All routes require admin auth.
+
+| Method | Path |
+| --- | --- |
+| `GET` | `/api/admin/payments` |
+| `GET` | `/api/admin/exports/payments.csv` |
+
+Success: `Payment[]` including `user` and `coinPackage`, newest first.
+
+Common errors: `401`, `403`.
+
+### Admin Users
+
+All routes require admin auth.
+
+| Method | Path |
+| --- | --- |
+| `GET` | `/api/admin/users` |
+| `GET` | `/api/admin/users/:id` |
+| `PATCH` | `/api/admin/users/:id/status` |
+| `GET` | `/api/admin/audit-logs` |
+| `GET` | `/api/admin/exports/contestants.csv` |
+
+`GET /api/admin/users` success:
+
+```json
+{
+  "users": [
+    {
+      "id": "user-id",
+      "name": "Jane Rivera",
+      "email": "jane@example.com",
+      "phone": "+2348012345678",
+      "role": "USER",
+      "isActive": true,
+      "createdAt": "2026-06-14T00:00:00.000Z",
+      "updatedAt": "2026-06-14T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+Status body:
+
+```json
+{
+  "isActive": false
+}
+```
+
+Success for single/status routes:
+
+```json
+{
+  "user": {
+    "id": "user-id",
+    "name": "Jane Rivera",
+    "email": "jane@example.com",
+    "phone": "+2348012345678",
+    "role": "USER",
+    "isActive": false,
+    "createdAt": "2026-06-14T00:00:00.000Z",
+    "updatedAt": "2026-06-14T00:00:00.000Z"
+  }
+}
+```
+
+Common errors: `400`, `401`, `403`, `404`.
+
+`GET /api/admin/audit-logs`
+
+Query params:
+
+- `page`: default `1`.
+- `limit`: default `20`, max `100`.
+- `action`: optional exact action filter, for example `ENGAGEMENT_UPDATE`.
+
+Success:
+
+```json
+{
+  "items": [
+    {
+      "id": "audit-id",
+      "action": "ENGAGEMENT_UPDATE",
+      "entity": "Contestant",
+      "entityId": "contestant-id",
+      "metadata": {},
+      "actorId": "admin-user-id",
+      "createdAt": "2026-06-14T00:00:00.000Z"
+    }
+  ],
+  "page": 1,
+  "limit": 20,
+  "total": 1,
+  "totalPages": 1
+}
+```
+
+CSV export endpoints return `text/csv; charset=utf-8` with attachment filenames.
+
+## Frontend Implementation Notes
+
+### Token Storage
+
+- Store the JWT returned from `/api/auth/register` or `/api/auth/login` in the frontend's auth storage.
+- Prefer an app-level auth abstraction that can later move from `localStorage` to an httpOnly cookie if the backend adds cookie auth.
+- This backend currently reads only `Authorization: Bearer <token>`.
+
+Attach token:
+
+```ts
+await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/wallet/me`, {
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+});
+```
+
+### Route Categories
+
+Public routes:
+
+- `GET /health`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/site-settings`
+- `GET /api/homepage`
+- `GET /api/faqs`
+- `GET /api/sponsors`
+- `GET /api/rules`
+- `POST /api/contact`
+- `GET /api/competitions`
+- `GET /api/competitions/:id`
+- `GET /api/competitions/:competitionId/leaderboard`
+- `GET /api/competitions/:competitionId/winners`
+- `GET /api/contestants/:id`
+- `GET /api/stages/:stageId/submissions`
+- `GET /api/stages/:stageId/votes/summary`
+- `GET /api/coin-packages`
+- `POST /api/payments/webhook/paystack` is public for Paystack only; frontend should not call it.
+
+User-auth routes:
+
+- `GET /api/auth/me`
+- `GET /api/users/me`
+- `PATCH /api/users/me`
+- `PATCH /api/users/me/password`
+- `POST /api/uploads/image`
+- `POST /api/competitions/:competitionId/contestants`
+- `GET /api/contestants/me`
+- `GET /api/contestants/me/:competitionId`
+- `PATCH /api/contestants/me/:competitionId/photo`
+- `GET /api/contestants/me/submissions`
+- `GET /api/contestants/:id/votes`
+- `GET /api/contestants/code/:contestantCode`
+- `GET /api/contestants/code/:contestantCode/vote-info`
+- `POST /api/public-votes/intents` (public)
+- `POST /api/public-votes/submit` (public; `/api/public-votes` is an alias)
+- `POST /api/stages/:stageId/submissions`
+- `GET /api/wallet/me`
+- `GET /api/wallet/me/transactions`
+- `POST /api/votes/cast`
+- `POST /api/payments/coin-purchase/init`
+- `GET /api/payments/verify/:reference`
+- `GET /api/payments/me`
+
+Admin-auth routes:
+
+- All `/api/admin/*` routes.
+- `POST /api/admin/ads`
+- `POST /api/uploads/video` (sponsored-ad media only)
+- `GET /api/admin/ads`
+- `GET /api/admin/ads/:id`
+- `PATCH /api/admin/ads/:id`
+- `DELETE /api/admin/ads/:id`
+- `GET /api/admin/public-votes`
+- `GET /api/admin/public-votes/:id`
+- `PATCH /api/admin/public-votes/:id/status`
+- `POST /api/admin/coin-packages`
+- `GET /api/admin/coin-packages`
+- `PATCH /api/admin/coin-packages/:id`
+- `DELETE /api/admin/coin-packages/:id`
+- `POST /api/competitions`
+- `PATCH /api/competitions/:id`
+- `DELETE /api/competitions/:id`
+- `POST /api/competitions/:competitionId/declare-winners`
+- `POST /api/competitions/:competitionId/stages`
+- `GET /api/competitions/:competitionId/stages`
+- `PATCH /api/stages/:id`
+- `DELETE /api/stages/:id`
+- `POST /api/stages/:stageId/eliminate-bottom`
+
+### Paystack Flow
+
+1. User selects an active coin package from `GET /api/coin-packages`.
+2. Frontend calls `POST /api/payments/coin-purchase/init` with `{ "coinPackageId": "..." }`.
+3. Backend calculates amount and coins server-side, creates a `PENDING` payment, initializes Paystack, and returns `authorizationUrl`, `accessCode`, `reference`, `amountNaira`, and `totalCoins`.
+4. Frontend redirects the browser to `authorizationUrl` or opens Paystack checkout with the returned data.
+5. After Paystack redirects back to the frontend, call `GET /api/payments/verify/:reference` with the user's Bearer token.
+6. On Paystack success, backend marks the payment `SUCCESS`, credits the wallet once, and creates a `CREDIT` coin transaction.
+7. Webhook `POST /api/payments/webhook/paystack` also processes `charge.success` idempotently. The frontend should not call the webhook route.
+
+### Coin Purchase Flow
+
+1. Load packages with `GET /api/coin-packages`.
+2. Require login before purchase.
+3. Initialize purchase through `/api/payments/coin-purchase/init`.
+4. Complete Paystack checkout.
+5. Verify with `/api/payments/verify/:reference`.
+6. Refresh wallet with `/api/wallet/me`.
+7. Show payment history from `/api/payments/me`.
+
+### Manual Public Voting Flow
+
+Use **Manual Public Voting (Authoritative Current Contract)** above. In short: load vote-info, create `/api/public-votes/intents`, transfer using that intent's `paymentReference`, upload required proof to `/api/uploads/payment-proof` with that reference, then submit via `/api/public-votes/submit` (or the supported `/api/public-votes` alias). Admins confirm/reject `SUBMITTED` payments through `/api/admin/public-votes/:id/status`; only confirmation credits votes.
+
+### Legacy Coin Voting Flow
+
+1. Load competition detail with `/api/competitions/:id`.
+2. Load leaderboard with `/api/competitions/:competitionId/leaderboard`.
+3. Load user's wallet with `/api/wallet/me`.
+4. Require login and enough coins before calling `/api/votes/cast`.
+5. Send `contestantId`, `stageId`, and integer `coinsToSpend`.
+6. On success, update displayed wallet balance from response and refresh leaderboard/stats.
+7. For weighted winner views, use leaderboard `mode=combined&engagementWeight=50&tokenWeight=50`.
+
+### Sponsored Ads Flow
+
+1. Admin uploads optional creative assets with `/api/uploads/image` or `/api/uploads/video`.
+2. Admin creates an ad through `/api/admin/ads` with placement, destination URL fields, status, and optional date window.
+3. Frontend loads ads by page slot with `/api/ads?placement=HOME_TOP`, `/api/ads?placement=LEADERBOARD`, and similar placement values.
+4. Frontend renders ads in existing page space only; voting and submission actions must remain uninterrupted.
+5. When an ad is visible, call `/api/ads/:id/impression`.
+6. When a user clicks, call `/api/ads/:id/click` and open `targetUrl`, `whatsappUrl`, or `socialUrl`.
+
+### Contestant Registration And Submission Flow
+
+1. Contestant registers through `/api/auth/register`.
+2. Backend automatically creates the contestant profile in the active/default competition.
+3. Contestant starts as `PENDING` but appears publicly immediately unless admin rejects/removes them.
+4. Optional photo path before signup: upload an image to `/api/uploads/registration-image`, then include `photoUrl` and optional `photoPublicId`/metadata during registration. After login, use `/api/uploads/image` with `/api/contestants/me/:competitionId/photo` for photo changes.
+5. Do not upload a competition video file. `/api/uploads/registration-video` is a compatibility route that returns `400`, and `/api/uploads/video` is reserved for admin sponsored-ad media. TikTok links remain separate submission metadata managed through `/api/admin/submissions/:id/youtube`.
+6. Registered contestants can submit immediately to open submission stages; only `REJECTED` and `ELIMINATED` contestant profiles are blocked.
+7. One submission is allowed per contestant per stage.
+8. Submission starts as `APPROVED`, appears publicly immediately, and appears in the admin dashboard under **Submissions**; admin removes, rejects, or moderates invalid entries through admin contestant/submission status tools.
+9. Admin can attach YouTube, TikTok, Facebook, Instagram, external video, and thumbnail links through `/api/admin/submissions/:id/youtube`.
+10. Public stage submissions list visible submissions and exclude only rejected submissions or rejected/eliminated contestants.
+11. TikTok/Facebook/Instagram metrics are entered manually through the admin engagement endpoint; there is no external social API integration yet.
+
+## Suggested Frontend Routes
+
+- `/` -> homepage using `/api/homepage`, `/api/site-settings`, `/api/faqs`, `/api/sponsors`, and competitions.
+- `/competitions` -> competition listing from `/api/competitions`.
+- `/competitions/[id-or-slug]` -> competition detail. Backend supports id only; if using slug in URL, frontend must first resolve from `/api/competitions`.
+- `/contestants/[id]` -> public contestant profile from `/api/contestants/:id`.
+- `/vote/[contestantCode]` -> vote-info, `/api/public-votes/intents`, `/api/uploads/payment-proof`, then `/api/public-votes/submit`.
+- `/leaderboard/[competitionId]` -> `/api/competitions/:competitionId/leaderboard`.
+- `/login` -> `/api/auth/login`.
+- `/register` -> `/api/auth/register`.
+- `/dashboard` -> `/api/auth/me`, `/api/users/me`, `/api/contestants/me`.
+- `/dashboard/wallet` -> legacy only; hide for MVP unless coin/Paystack features are explicitly re-enabled.
+- `/dashboard/submissions` -> `/api/contestants/me/submissions`.
+- `/admin` -> admin overview using admin list endpoints.
+- `/admin/competitions` -> admin competition and stage management.
+- `/admin/contestants` -> `/api/admin/contestants`.
+- `/admin/submissions` -> `/api/admin/submissions`.
+- `/admin/payments` -> `/api/admin/payments`.
+- `/admin/public-votes` -> `/api/admin/public-votes`.
+- `/admin/cms` -> `/api/admin/site-settings`, `/api/admin/homepage`, `/api/admin/faqs`, `/api/admin/sponsors`, `/api/admin/rules`, `/api/admin/contact-messages`.
+- `/admin/ads` -> `/api/admin/ads`.
+
+## Warnings
+
+- Do not hardcode fake endpoints.
+- Do not invent fields.
+- Always update this document when backend endpoints, DTOs, Prisma models, auth rules, or response shapes change.
+- Frontend must use `NEXT_PUBLIC_API_URL` for the backend origin.
+- Backend route params named `:id` for competition detail/update/delete are ids, not slugs.
+- Cloudinary credentials are backend-only; frontend should only use returned upload URLs/public ids.
+- Coins are internal platform credits only. There is no blockchain, cryptocurrency, withdrawal, transfer, or refund endpoint in this backend.
+
+## Production manual bank-transfer voting contract (current)
+
+Manual bank transfer is the only active voting payment mode. Do not call Paystack coin-purchase initiation unless `PAYSTACK_VOTING_ENABLED=true` is deliberately restored.
+
+### 1. Create an intent
+
+`POST /api/public-votes/intents`
+
+```json
+{ "contestantCode": "NRV-100001", "voteQuantity": 3 }
+```
+
+`contestantId` may be supplied instead of `contestantCode`. The server validates the contestant and voting window, calculates the amount, and returns a generated narration reference:
+
+```json
+{
+  "paymentReference": "NRV-A1B2C3D4E5",
+  "contestant": { "id": "...", "contestantCode": "NRV-100001", "displayName": "..." },
+  "voteQuantity": 3,
+  "expectedAmountNaira": 1500,
+  "bankName": "Access Bank",
+  "accountName": "Novo Riviera Enterprise",
+  "accountNumber": "1824826876",
+  "paymentInstructions": "Transfer the exact amount and use the payment reference as the narration.",
+  "requiredNarration": "NRV-A1B2C3D4E5"
+}
+```
+
+Never send a client-calculated payment amount or narration. The reference, price, amount, vote quantity, and bank details are snapshotted by the backend.
+
+### 2. Upload proof for that intent
+
+`POST /api/uploads/payment-proof` as `multipart/form-data` with `file` and `paymentReference`. Proof is accepted only for an unsubmitted intent and is linked by the backend; arbitrary proof URLs are not accepted.
+
+### 3. Submit transfer confirmation
+
+`POST /api/public-votes/submit`
+
+```json
+{
+  "paymentReference": "NRV-A1B2C3D4E5",
+  "voterName": "Jane Doe",
+  "voterPhone": "08000000000",
+  "voterEmail": "jane@example.com",
+  "transferReference": "ACCESS-BANK-REFERENCE",
+  "note": "Transferred from mobile app"
+}
+```
+
+A proof attached to the same intent is required. Submission creates no votes. The payment moves from `INTENT_CREATED` to `SUBMITTED`.
+
+### 4. Admin decision
+
+`PATCH /api/admin/public-votes/:id/status` requires admin auth:
+
+```json
+{ "status": "CONFIRMED", "adminNote": "Verified in Access Bank" }
+```
+
+or
+
+```json
+{ "status": "REJECTED", "adminNote": "Bank transfer could not be verified" }
+```
+
+Only `SUBMITTED -> CONFIRMED` and `SUBMITTED -> REJECTED` are permitted. Confirmation atomically creates the unique payment credit ledger row and increments the contestant exactly once. Repeated/concurrent confirmation cannot add votes twice. There is no generic confirmed-payment reversal endpoint.
+
+### TikTok-only creator engagement
+
+New submission link updates and engagement updates accept TikTok only. Facebook video URLs and Facebook engagement metrics are historical fields and are no longer part of active API contracts.

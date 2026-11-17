@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "VoteSource" ADD VALUE 'ADMIN_MANUAL';

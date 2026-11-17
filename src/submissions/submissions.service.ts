@@ -1,0 +1,166 @@
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { ContestantStatus, SubmissionStatus } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateSubmissionDto } from './dto/create-submission.dto';
+import { UpdateSubmissionStatusDto } from './dto/update-submission-status.dto';
+import { UpdateSubmissionYoutubeDto } from './dto/update-submission-youtube.dto';
+
+const contestantSubmissionBlockedMessage =
+  'Your account or contestant profile is not allowed to submit entries. Please contact support.';
+
+const blockedContestantStatuses: ContestantStatus[] = [
+  ContestantStatus.REJECTED,
+  ContestantStatus.ELIMINATED,
+];
+
+const publicSubmissionBlockedStatuses: SubmissionStatus[] = [
+  SubmissionStatus.REJECTED,
+];
+
+@Injectable()
+export class SubmissionsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async create(userId: string, stageId: string, dto: CreateSubmissionDto) {
+    const stage = await this.prisma.stage.findUnique({
+      where: { id: stageId },
+    });
+
+    if (!stage) {
+      throw new NotFoundException('Stage not found');
+    }
+
+    this.ensureSubmissionWindow(stage);
+
+    const contestant = await this.prisma.contestant.findUnique({
+      where: {
+        competitionId_userId: {
+          competitionId: stage.competitionId,
+          userId,
+        },
+      },
+    });
+
+    if (!contestant) {
+      throw new BadRequestException(
+        'Please register as a contestant for this competition before submitting an entry.',
+      );
+    }
+
+    if (blockedContestantStatuses.includes(contestant.status)) {
+      throw new BadRequestException(contestantSubmissionBlockedMessage);
+    }
+
+    try {
+      return await this.prisma.submission.create({
+        data: {
+          title: dto.title,
+          description: dto.description,
+          contestantId: contestant.id,
+          stageId,
+          status: SubmissionStatus.APPROVED,
+        },
+      });
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        throw new ConflictException(
+          'Contestant already has a submission for this stage',
+        );
+      }
+      throw error;
+    }
+  }
+
+  findMine(userId: string) {
+    return this.prisma.submission.findMany({
+      where: { contestant: { userId } },
+      include: { stage: true, contestant: true },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  findByStage(stageId: string) {
+    return this.prisma.submission.findMany({
+      where: {
+        stageId,
+        status: { notIn: publicSubmissionBlockedStatuses },
+        contestant: { status: { notIn: blockedContestantStatuses } },
+      },
+      include: { contestant: true },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  findAll() {
+    return this.prisma.submission.findMany({
+      include: {
+        contestant: { include: { user: true, competition: true } },
+        stage: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async updateStatus(id: string, dto: UpdateSubmissionStatusDto) {
+    await this.ensureSubmission(id);
+    return this.prisma.submission.update({
+      where: { id },
+      data: {
+        status: dto.status,
+        adminNote: dto.adminNote,
+      },
+    });
+  }
+
+  async updateYoutube(id: string, dto: UpdateSubmissionYoutubeDto) {
+    await this.ensureSubmission(id);
+    return this.prisma.submission.update({
+      where: { id },
+      data: dto,
+    });
+  }
+
+  async remove(id: string) {
+    await this.ensureSubmission(id);
+    return this.prisma.submission.delete({ where: { id } });
+  }
+
+  private ensureSubmissionWindow(stage: {
+    submissionStartDate: Date | null;
+    submissionEndDate: Date | null;
+  }) {
+    const now = new Date();
+    if (
+      (stage.submissionStartDate && now < stage.submissionStartDate) ||
+      (stage.submissionEndDate && now > stage.submissionEndDate)
+    ) {
+      throw new BadRequestException('Stage is outside the submission window');
+    }
+  }
+
+  private async ensureSubmission(id: string) {
+    const submission = await this.prisma.submission.findUnique({
+      where: { id },
+    });
+
+    if (!submission) {
+      throw new NotFoundException('Submission not found');
+    }
+
+    return submission;
+  }
+
+  private isUniqueConstraintError(error: unknown) {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'P2002'
+    );
+  }
+}
