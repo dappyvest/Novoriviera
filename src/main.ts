@@ -13,18 +13,28 @@ async function bootstrap() {
     .map((url) => url.trim())
     .filter(Boolean);
 
+  
   const allowedOrigins = [
     ...new Set([
       'https://www.novoriviera.com',
       'https://novoriviera.com',
+      'http://localhost:3001',
+      'http://127.0.0.1:3001',
       ...frontendUrls,
     ]),
   ];
 
   app.enableCors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`Origin ${origin} is not allowed by CORS`), false);
+      }
+    },
     credentials: true,
   });
+  
   app.setGlobalPrefix('api', {
     exclude: [{ path: 'health', method: RequestMethod.GET }],
   });

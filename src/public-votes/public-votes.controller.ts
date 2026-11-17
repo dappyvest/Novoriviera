@@ -1,30 +1,16 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ManualVotePaymentStatus, UserRole } from '@prisma/client';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import type { CurrentUserPayload } from '../auth/types/current-user.type';
-import { CreateManualVoteIntentDto, SubmitManualVotePaymentDto } from './dto/manual-vote-intent.dto';
-import { UpdatePublicVoteStatusDto } from './dto/update-public-vote-status.dto';
-import { PublicVoteRateLimitGuard } from './public-vote-rate-limit.guard';
 import { PublicVotesService } from './public-votes.service';
 
 @Controller('public-votes')
 export class PublicVotesController {
   constructor(private readonly publicVotesService: PublicVotesService) {}
 
-  @Post('intents')
-  @UseGuards(PublicVoteRateLimitGuard)
-  createIntent(@Body() dto: CreateManualVoteIntentDto) { return this.publicVotesService.createIntent(dto); }
+  // Historical manual-transfer endpoints are intentionally disabled.
 
-  @Post('submit')
-  @UseGuards(PublicVoteRateLimitGuard)
-  submit(@Body() dto: SubmitManualVotePaymentDto) { return this.publicVotesService.submit(dto); }
-
-  @Post()
-  @UseGuards(PublicVoteRateLimitGuard)
-  submitLegacyPath(@Body() dto: SubmitManualVotePaymentDto) { return this.publicVotesService.submit(dto); }
 }
 
 @Controller('admin/public-votes')
@@ -34,5 +20,4 @@ export class AdminPublicVotesController {
   constructor(private readonly publicVotesService: PublicVotesService) {}
   @Get() findAdmin(@Query('status') status?: ManualVotePaymentStatus, @Query('competitionId') competitionId?: string, @Query('contestantCode') contestantCode?: string) { return this.publicVotesService.findAdmin({ status, competitionId, contestantCode }); }
   @Get(':id') findOne(@Param('id') id: string) { return this.publicVotesService.findOne(id); }
-  @Patch(':id/status') updateStatus(@Param('id') id: string, @Body() dto: UpdatePublicVoteStatusDto, @CurrentUser() user: CurrentUserPayload) { return this.publicVotesService.confirm(id, dto, user.id); }
 }

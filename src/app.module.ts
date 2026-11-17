@@ -5,7 +5,6 @@ import { AppService } from './app.service';
 import { AdminModule } from './admin/admin.module';
 import { AdsModule } from './ads/ads.module';
 import { AuthModule } from './auth/auth.module';
-import { CoinPackagesModule } from './coin-packages/coin-packages.module';
 import { CmsModule } from './cms/cms.module';
 import { CompetitionsModule } from './competitions/competitions.module';
 import { ContestantsModule } from './contestants/contestants.module';
@@ -18,7 +17,6 @@ import { UsersModule } from './users/users.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { validateEnv } from './config/env.validation';
 import { VotesModule } from './votes/votes.module';
-import { WalletModule } from './wallet/wallet.module';
 
 @Module({
   imports: [
@@ -30,7 +28,6 @@ import { WalletModule } from './wallet/wallet.module';
     AdsModule,
     AuthModule,
     CmsModule,
-    CoinPackagesModule,
     UsersModule,
     CompetitionsModule,
     ContestantsModule,
@@ -38,7 +35,6 @@ import { WalletModule } from './wallet/wallet.module';
     SubmissionsModule,
     UploadsModule,
     VotesModule,
-    WalletModule,
     PaymentsModule,
     PublicVotesModule,
     AdminModule,

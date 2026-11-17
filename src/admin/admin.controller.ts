@@ -1,3 +1,5 @@
+import { UpdateEngagementDto } from '../contestants/dto/update-engagement.dto';
+import { AdminManualVoteDto } from './dto/admin-manual-vote.dto';
 import {
   Body,
   Controller,
@@ -14,9 +16,6 @@ import { UserRole } from '@prisma/client';
 import { AdsService } from '../ads/ads.service';
 import { CreateSponsoredAdDto } from '../ads/dto/create-sponsored-ad.dto';
 import { UpdateSponsoredAdDto } from '../ads/dto/update-sponsored-ad.dto';
-import { CoinPackagesService } from '../coin-packages/coin-packages.service';
-import { CreateCoinPackageDto } from '../coin-packages/dto/create-coin-package.dto';
-import { UpdateCoinPackageDto } from '../coin-packages/dto/update-coin-package.dto';
 import { CompetitionsService } from '../competitions/competitions.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -26,12 +25,9 @@ import type { CurrentUserPayload } from '../auth/types/current-user.type';
 import { ContestantsService } from '../contestants/contestants.service';
 import { UpdateContestantStatusDto } from '../contestants/dto/update-contestant-status.dto';
 import { SubmissionsService } from '../submissions/submissions.service';
-import { PaymentsService } from '../payments/payments.service';
 import { UpdateSubmissionStatusDto } from '../submissions/dto/update-submission-status.dto';
 import { UpdateSubmissionYoutubeDto } from '../submissions/dto/update-submission-youtube.dto';
 import { VotesService } from '../votes/votes.service';
-import { AdjustWalletDto } from '../wallet/dto/adjust-wallet.dto';
-import { WalletService } from '../wallet/wallet.service';
 import { AdminService } from './admin.service';
 import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
@@ -43,13 +39,10 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly adsService: AdsService,
-    private readonly coinPackagesService: CoinPackagesService,
     private readonly competitionsService: CompetitionsService,
     private readonly contestantsService: ContestantsService,
-    private readonly paymentsService: PaymentsService,
     private readonly submissionsService: SubmissionsService,
     private readonly votesService: VotesService,
-    private readonly walletService: WalletService,
   ) {}
 
   @Post('ads')
@@ -108,59 +101,6 @@ export class AdminController {
       entityId: id,
     });
     return ad;
-  }
-
-  @Post('coin-packages')
-  async createCoinPackage(
-    @Body() dto: CreateCoinPackageDto,
-    @CurrentUser() user: CurrentUserPayload,
-  ) {
-    const coinPackage = await this.coinPackagesService.create(dto);
-    await this.adminService.createAuditLog({
-      actorId: user.id,
-      action: 'COIN_PACKAGE_CREATE',
-      entity: 'CoinPackage',
-      entityId: coinPackage.id,
-      metadata: { ...dto },
-    });
-    return coinPackage;
-  }
-
-  @Get('coin-packages')
-  findCoinPackages() {
-    return this.coinPackagesService.findAdmin();
-  }
-
-  @Patch('coin-packages/:id')
-  async updateCoinPackage(
-    @Param('id') id: string,
-    @Body() dto: UpdateCoinPackageDto,
-    @CurrentUser() user: CurrentUserPayload,
-  ) {
-    const coinPackage = await this.coinPackagesService.update(id, dto);
-    await this.adminService.createAuditLog({
-      actorId: user.id,
-      action: 'COIN_PACKAGE_UPDATE',
-      entity: 'CoinPackage',
-      entityId: id,
-      metadata: { ...dto },
-    });
-    return coinPackage;
-  }
-
-  @Delete('coin-packages/:id')
-  async deleteCoinPackage(
-    @Param('id') id: string,
-    @CurrentUser() user: CurrentUserPayload,
-  ) {
-    const coinPackage = await this.coinPackagesService.remove(id);
-    await this.adminService.createAuditLog({
-      actorId: user.id,
-      action: 'COIN_PACKAGE_DELETE',
-      entity: 'CoinPackage',
-      entityId: id,
-    });
-    return coinPackage;
   }
 
   @Get('users')
@@ -243,6 +183,19 @@ export class AdminController {
     return this.contestantsService.findOne(id);
   }
 
+  @Post('contestants/:id/engagement')
+  updateContestantEngagement(
+    @Param('id') id: string,
+    @Body() dto: UpdateEngagementDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.contestantsService.updateEngagement(
+      id,
+      dto,
+      user.id,
+    );
+  }
+
   @Patch('contestants/:id/status')
   updateContestantStatus(
     @Param('id') id: string,
@@ -265,33 +218,23 @@ export class AdminController {
     return this.votesService.findAll();
   }
 
-  @Get('payments')
-  findPayments() {
-    return this.paymentsService.findAll();
-  }
-
-  @Get('wallets')
-  findWallets() {
-    return this.walletService.findAllWallets();
-  }
-
-  @Get('wallets/:userId')
-  findWallet(@Param('userId') userId: string) {
-    return this.walletService.findByUser(userId);
-  }
-
-  @Post('wallets/:userId/adjust')
-  adjustWallet(
-    @Param('userId') userId: string,
-    @Body() dto: AdjustWalletDto,
+  @Post('contestants/:id/votes/top-up')
+  adminManualVoteTopUp(
+    @Param('id') id: string,
+    @Body() dto: AdminManualVoteDto,
     @CurrentUser() user: CurrentUserPayload,
   ) {
-    return this.walletService.adjustWallet(
-      userId,
-      dto.amount,
+    return this.votesService.adminManualTopUp(
+      id,
+      dto.quantity,
       dto.reason,
       user.id,
     );
+  }
+
+  @Get('payments')
+  findPayments() {
+    return this.adminService.findPaidVotePayments();
   }
 
   @Post('competitions/:id/reset')

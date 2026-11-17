@@ -54,15 +54,10 @@ enum SubmissionStatus {
 }
 
 enum VoteSource {
-  COIN
+  PAYSTACK
   ONLINE_ENGAGEMENT
   ITEM_PURCHASE
-}
-
-enum CoinTransactionType {
-  CREDIT
-  DEBIT
-  ADJUSTMENT
+  ADMIN_MANUAL
 }
 
 enum ContactMessageStatus {
@@ -131,20 +126,6 @@ enum ManualVotePaymentEventType {
   CREDIT_REVERSED
 }
 
-model CoinPackage {
-  id         String   @id @default(cuid())
-  name       String
-  priceNaira Int
-  coins      Int
-  bonusCoins Int      @default(0)
-  isActive   Boolean  @default(true)
-  sortOrder  Int      @default(0)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  payments Payment[]
-}
-
 model User {
   id           String   @id @default(cuid())
   name         String
@@ -156,14 +137,11 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  competitions               Competition[]       @relation("CompetitionOwner")
+  competitions               Competition[]            @relation("CompetitionOwner")
   contestants                Contestant[]
   votes                      Vote[]
-  coinWallet                 CoinWallet?
-  payments                   Payment[]
-  auditLogs                  AdminAuditLog[]     @relation("AdminAuditActor")
-  verifiedManualVotePayments ManualVotePayment[] @relation("ManualVoteVerifier")
-  coinTransactions           CoinTransaction[]
+  auditLogs                  AdminAuditLog[]          @relation("AdminAuditActor")
+  verifiedManualVotePayments ManualVotePayment[]      @relation("ManualVoteVerifier")
   manualVoteCredits          ManualVoteCredit[]
   manualVotePaymentEvents    ManualVotePaymentEvent[]
 }
@@ -199,10 +177,10 @@ model Competition {
   stages             Stage[]
   contestants        Contestant[]
   votes              Vote[]
-  payments           Payment[]
   winners            CompetitionWinner[]
   manualVotePayments ManualVotePayment[]
   manualVoteCredits  ManualVoteCredit[]
+  paidVotePayments   PaidVotePayment[]
 }
 
 model Stage {
@@ -258,50 +236,54 @@ model Contestant {
   winnerPlacements     CompetitionWinner[]
   manualVotePayments   ManualVotePayment[]
   manualVoteCredits    ManualVoteCredit[]
+  paidVotePayments     PaidVotePayment[]
 
   @@unique([competitionId, userId])
 }
 
 model ManualVotePayment {
-  id                String                  @id @default(cuid())
-  paymentReference  String?                 @unique
-  contestantCode    String
-  voterName         String
-  voterPhone        String
-  voterEmail        String?
-  amountPaid        Int
-  votePriceNaira    Int
-  votesCalculated   Int
-  voteQuantity      Int?
-  expectedAmountNaira Int?
-  transferReference String?
-  paymentNarration  String?
-  proofImageUrl     String?
-  proofPublicId     String?
-  proofMeta         Json?
-  note              String?
-  bankNameSnapshot  String?
-  bankAccountNameSnapshot String?
-  bankAccountNumberSnapshot String?
+  id                          String                  @id @default(cuid())
+  paymentReference            String?                 @unique
+  contestantCode              String
+  voterName                   String
+  voterPhone                  String
+  voterEmail                  String?
+  amountPaid                  Int
+  votePriceNaira              Int
+  votesCalculated             Int
+  voteQuantity                Int?
+  expectedAmountNaira         Int?
+  transferReference           String?
+  paymentNarration            String?
+  proofImageUrl               String?
+  proofPublicId               String?
+  proofMeta                   Json?
+  note                        String?
+  bankNameSnapshot            String?
+  bankAccountNameSnapshot     String?
+  bankAccountNumberSnapshot   String?
   paymentInstructionsSnapshot String?
-  status            ManualVotePaymentStatus @default(PENDING)
-  adminNote         String?
-  verifiedAt        DateTime?
-  submittedAt       DateTime?
-  confirmedAt       DateTime?
-  rejectedAt        DateTime?
-  cancelledAt       DateTime?
-  createdAt         DateTime                @default(now())
-  updatedAt         DateTime                @updatedAt
+  status                      ManualVotePaymentStatus @default(PENDING)
+  adminNote                   String?
+  verifiedAt                  DateTime?
+  submittedAt                 DateTime?
+  confirmedAt                 DateTime?
+  rejectedAt                  DateTime?
+  cancelledAt                 DateTime?
+  createdAt                   DateTime                @default(now())
+  updatedAt                   DateTime                @updatedAt
 
-  contestantId  String
-  contestant    Contestant  @relation(fields: [contestantId], references: [id], onDelete: Cascade)
+  contestantId String
+  contestant   Contestant @relation(fields: [contestantId], references: [id], onDelete: Cascade)
+
   competitionId String
   competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
-  verifiedById  String?
-  verifiedBy    User?       @relation("ManualVoteVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
-  credit        ManualVoteCredit?
-  events        ManualVotePaymentEvent[]
+
+  verifiedById String?
+  verifiedBy   User?   @relation("ManualVoteVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+
+  credit ManualVoteCredit?
+  events ManualVotePaymentEvent[]
 
   @@index([status, createdAt])
   @@index([competitionId, status])
@@ -310,30 +292,38 @@ model ManualVotePayment {
 }
 
 model ManualVoteCredit {
-  id                  String   @id @default(cuid())
-  voteQuantity        Int
-  createdAt           DateTime @default(now())
-  manualVotePaymentId String   @unique
+  id           String   @id @default(cuid())
+  voteQuantity Int
+  createdAt    DateTime @default(now())
+
+  manualVotePaymentId String            @unique
   manualVotePayment   ManualVotePayment @relation(fields: [manualVotePaymentId], references: [id], onDelete: Restrict)
-  contestantId        String
-  contestant          Contestant @relation(fields: [contestantId], references: [id], onDelete: Restrict)
-  competitionId       String
-  competition         Competition @relation(fields: [competitionId], references: [id], onDelete: Restrict)
-  confirmedById       String
-  confirmedBy         User @relation(fields: [confirmedById], references: [id], onDelete: Restrict)
+
+  contestantId String
+  contestant   Contestant @relation(fields: [contestantId], references: [id], onDelete: Restrict)
+
+  competitionId String
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Restrict)
+
+  confirmedById String
+  confirmedBy   User   @relation(fields: [confirmedById], references: [id], onDelete: Restrict)
+
   @@index([contestantId])
   @@index([competitionId])
 }
 
 model ManualVotePaymentEvent {
-  id                  String                     @id @default(cuid())
-  type                ManualVotePaymentEventType
-  metadata            Json?
-  createdAt           DateTime                   @default(now())
+  id        String                     @id @default(cuid())
+  type      ManualVotePaymentEventType
+  metadata  Json?
+  createdAt DateTime                   @default(now())
+
   manualVotePaymentId String
-  manualVotePayment   ManualVotePayment          @relation(fields: [manualVotePaymentId], references: [id], onDelete: Cascade)
-  actorId             String?
-  actor               User?                      @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  manualVotePayment   ManualVotePayment @relation(fields: [manualVotePaymentId], references: [id], onDelete: Cascade)
+
+  actorId String?
+  actor   User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
   @@index([manualVotePaymentId, createdAt])
 }
 
@@ -360,8 +350,9 @@ model Submission {
 
   contestantId String
   contestant   Contestant @relation(fields: [contestantId], references: [id], onDelete: Cascade)
-  stageId      String
-  stage        Stage      @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  stageId String
+  stage   Stage  @relation(fields: [stageId], references: [id], onDelete: Cascade)
 
   @@unique([contestantId, stageId])
 }
@@ -380,8 +371,9 @@ model EngagementBreakdown {
 
   contestantId String
   contestant   Contestant @relation(fields: [contestantId], references: [id], onDelete: Cascade)
-  stageId      String?
-  stage        Stage?     @relation(fields: [stageId], references: [id], onDelete: SetNull)
+
+  stageId String?
+  stage   Stage?  @relation(fields: [stageId], references: [id], onDelete: SetNull)
 }
 
 model CompetitionWinner {
@@ -399,8 +391,9 @@ model CompetitionWinner {
 
   competitionId String
   competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
-  contestantId  String
-  contestant    Contestant  @relation(fields: [contestantId], references: [id], onDelete: Cascade)
+
+  contestantId String
+  contestant   Contestant @relation(fields: [contestantId], references: [id], onDelete: Cascade)
 
   @@unique([competitionId, placement])
   @@unique([competitionId, contestantId])
@@ -412,62 +405,47 @@ model Vote {
   quantity  Int        @default(1)
   createdAt DateTime   @default(now())
 
-  userId        String?
-  user          User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
   competitionId String
   competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
-  stageId       String?
-  stage         Stage?      @relation(fields: [stageId], references: [id], onDelete: SetNull)
-  contestantId  String
-  contestant    Contestant  @relation(fields: [contestantId], references: [id], onDelete: Cascade)
+
+  stageId String?
+  stage   Stage?  @relation(fields: [stageId], references: [id], onDelete: SetNull)
+
+  contestantId String
+  contestant   Contestant @relation(fields: [contestantId], references: [id], onDelete: Cascade)
+
+  paidVotePaymentId String?          @unique
+  paidVotePayment   PaidVotePayment? @relation(fields: [paidVotePaymentId], references: [id], onDelete: Restrict)
 }
 
-model CoinWallet {
-  id        String   @id @default(cuid())
-  balance   Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  userId       String            @unique
-  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions CoinTransaction[]
-}
-
-model CoinTransaction {
-  id          String              @id @default(cuid())
-  amount      Int
-  type        CoinTransactionType
-  description String?
-  reference   String?             @unique
-  metadata    Json?
-  createdAt   DateTime            @default(now())
-
-  walletId String
-  wallet   CoinWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  userId   String?
-  user     User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
-}
-
-model Payment {
+model PaidVotePayment {
   id               String          @id @default(cuid())
   provider         PaymentProvider @default(PAYSTACK)
   reference        String          @unique
   amountNaira      Int
-  coins            Int
-  bonusCoins       Int             @default(0)
-  totalCoins       Int
+  amountKobo       Int
+  voteQuantity     Int
   status           PaymentStatus   @default(PENDING)
+  voterEmail       String?
   providerResponse Json?
   paidAt           DateTime?
+  creditedAt       DateTime?
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
-  userId        String
-  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  coinPackageId String
-  coinPackage   CoinPackage  @relation(fields: [coinPackageId], references: [id], onDelete: Restrict)
-  competitionId String?
-  competition   Competition? @relation(fields: [competitionId], references: [id], onDelete: SetNull)
+  competitionId String
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Restrict)
+
+  contestantId String
+  contestant   Contestant @relation(fields: [contestantId], references: [id], onDelete: Restrict)
+
+  vote Vote?
+
+  @@index([competitionId, status, createdAt])
+  @@index([contestantId, status])
 }
 
 model AdminAuditLog {
@@ -483,24 +461,24 @@ model AdminAuditLog {
 }
 
 model SiteSettings {
-  id             String   @id @default(cuid())
-  singletonKey   String   @unique @default("default")
-  siteName       String
-  siteTagline    String
-  aboutTitle     String
-  aboutContent   String
-  contactEmail   String
-  contactPhone   String
+  id                 String   @id @default(cuid())
+  singletonKey       String   @unique @default("default")
+  siteName           String
+  siteTagline        String
+  aboutTitle         String
+  aboutContent       String
+  contactEmail       String
+  contactPhone       String
   lagosOfficeAddress String?
-  whatsappNumber String
-  facebookUrl    String
-  instagramUrl   String
-  tiktokUrl      String
-  youtubeUrl     String
-  termsUrl       String?
-  privacyUrl     String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  whatsappNumber     String
+  facebookUrl        String
+  instagramUrl       String
+  tiktokUrl          String
+  youtubeUrl         String
+  termsUrl           String?
+  privacyUrl         String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model HomepageContent {

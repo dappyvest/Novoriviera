@@ -6,13 +6,11 @@ import {
 } from '@prisma/client';
 import { AdsService } from '../ads/ads.service';
 import type { CurrentUserPayload } from '../auth/types/current-user.type';
-import { CoinPackagesService } from '../coin-packages/coin-packages.service';
 import { CompetitionsService } from '../competitions/competitions.service';
 import { ContestantsService } from '../contestants/contestants.service';
 import { PaymentsService } from '../payments/payments.service';
 import { SubmissionsService } from '../submissions/submissions.service';
 import { VotesService } from '../votes/votes.service';
-import { WalletService } from '../wallet/wallet.service';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 
@@ -60,7 +58,6 @@ describe('AdminController', () => {
             remove: adsRemove,
           },
         },
-        { provide: CoinPackagesService, useValue: {} },
         {
           provide: CompetitionsService,
           useValue: {
@@ -72,7 +69,6 @@ describe('AdminController', () => {
         { provide: PaymentsService, useValue: {} },
         { provide: SubmissionsService, useValue: {} },
         { provide: VotesService, useValue: {} },
-        { provide: WalletService, useValue: {} },
       ],
     }).compile();
 

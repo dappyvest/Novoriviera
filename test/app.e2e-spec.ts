@@ -6,7 +6,6 @@ import {
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   CompetitionStatus,
-  CoinTransactionType,
   ContactMessageStatus,
   ContestantStatus,
   ManualVotePaymentStatus,
@@ -155,7 +154,7 @@ type MockCoinTransaction = {
   walletId: string;
   userId: string | null;
   amount: number;
-  type: CoinTransactionType;
+  type: string;
   description: string | null;
   createdAt: Date;
 };
@@ -1651,9 +1650,10 @@ describe('NovoRivera competition, wallet, and voting engine (e2e)', () => {
   function ensureRegistrationCompetition() {
     if (
       competitions.some((competition) =>
-        [CompetitionStatus.ACTIVE, CompetitionStatus.PUBLISHED].includes(
-          competition.status,
-        ),
+      (
+        competition.status === CompetitionStatus.ACTIVE ||
+        competition.status === CompetitionStatus.PUBLISHED
+      ),
       )
     ) {
       return;

@@ -6,12 +6,14 @@ import {
 } from '@nestjs/common';
 import {
   ContestantStatus,
+  EngagementPlatform,
   Prisma,
   SubmissionStatus,
   UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateContestantDto } from './dto/create-contestant.dto';
+import { UpdateEngagementDto } from './dto/update-engagement.dto';
 import { UpdateContestantPhotoDto } from './dto/update-contestant-photo.dto';
 import { getVotingWindowStatus } from '../competitions/voting-window.util';
 
@@ -277,6 +279,117 @@ export class ContestantsService {
       createdAt: contestant.createdAt,
       updatedAt: contestant.updatedAt,
     };
+  }
+
+  async updateEngagement(
+    id: string,
+    dto: UpdateEngagementDto,
+    actorId: string,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const contestant = await tx.contestant.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          totalOnlineEngagement: true,
+        },
+      });
+  
+      if (!contestant) {
+        throw new NotFoundException('Contestant not found');
+      }
+  
+      const hasBreakdown =
+        dto.views !== undefined ||
+        dto.likes !== undefined ||
+        dto.comments !== undefined ||
+        dto.shares !== undefined ||
+        dto.watchScore !== undefined;
+  
+      let updatedContestant;
+  
+      if (hasBreakdown) {
+        const views = dto.views ?? 0;
+        const likes = dto.likes ?? 0;
+        const comments = dto.comments ?? 0;
+        const shares = dto.shares ?? 0;
+        const watchScore = dto.watchScore ?? 0;
+  
+        const total = views + likes + comments + shares + watchScore;
+  
+        if (dto.stageId) {
+          const stage = await tx.stage.findUnique({
+            where: { id: dto.stageId },
+            select: { id: true, competitionId: true },
+          });
+  
+          if (
+            !stage ||
+            stage.competitionId !==
+              (await tx.contestant.findUnique({
+                where: { id },
+                select: { competitionId: true },
+              }))?.competitionId
+          ) {
+            throw new BadRequestException(
+              'Stage does not belong to this contestant competition',
+            );
+          }
+        }
+  
+        await tx.engagementBreakdown.create({
+          data: {
+            contestantId: id,
+            stageId: dto.stageId,
+            views,
+            likes,
+            comments,
+            shares,
+            watchScore,
+            total,
+            platform: dto.platform as EngagementPlatform | undefined,
+            note: dto.note,
+          },
+        });
+  
+        const breakdowns = await tx.engagementBreakdown.aggregate({
+          where: { contestantId: id },
+          _sum: { total: true },
+        });
+  
+        updatedContestant = await tx.contestant.update({
+          where: { id },
+          data: {
+            totalOnlineEngagement: breakdowns._sum.total ?? 0,
+          },
+        });
+      } else if (dto.onlineEngagementCount !== undefined) {
+        updatedContestant = await tx.contestant.update({
+          where: { id },
+          data: {
+            totalOnlineEngagement: dto.onlineEngagementCount,
+          },
+        });
+      } else {
+        throw new BadRequestException('No engagement data provided');
+      }
+  
+      await tx.adminAuditLog.create({
+        data: {
+          actorId,
+          action: 'ENGAGEMENT_UPDATE',
+          entity: 'Contestant',
+          entityId: id,
+          metadata: {
+            ...dto,
+            updatedTotalOnlineEngagement:
+              updatedContestant.totalOnlineEngagement,
+          },
+        },
+      });
+  
+      return updatedContestant;
+    });
   }
 
   async updateStatus(id: string, status: ContestantStatus) {

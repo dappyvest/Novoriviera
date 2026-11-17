@@ -154,31 +154,29 @@ export class AdminService {
     );
   }
 
+  findPaidVotePayments() {
+    return this.prisma.paidVotePayment.findMany({
+      include: { contestant: true, competition: true, vote: true },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async exportPaymentsCsv() {
-    const payments = await this.prisma.payment.findMany({
-      include: { user: true, coinPackage: true },
+    const payments = await this.prisma.paidVotePayment.findMany({
+      include: { contestant: true, competition: true },
       orderBy: { createdAt: 'desc' },
     });
 
     return this.toCsv(
-      [
-        'id',
-        'reference',
-        'userEmail',
-        'coinPackage',
-        'amountNaira',
-        'totalCoins',
-        'status',
-        'paidAt',
-        'createdAt',
-      ],
+      ['id', 'reference', 'voterEmail', 'contestant', 'competition', 'amountNaira', 'voteQuantity', 'status', 'paidAt', 'createdAt'],
       payments.map((payment) => [
         payment.id,
         payment.reference,
-        payment.user.email,
-        payment.coinPackage.name,
+        payment.voterEmail ?? '',
+        payment.contestant.displayName,
+        payment.competition.title,
         payment.amountNaira,
-        payment.totalCoins,
+        payment.voteQuantity,
         payment.status,
         payment.paidAt ?? '',
         payment.createdAt,

@@ -22,19 +22,9 @@ async function main() {
 
   const existingAdmin = await prisma.user.findUnique({
     where: { email },
-    include: { coinWallet: true },
   });
 
   if (existingAdmin) {
-    if (!existingAdmin.coinWallet) {
-      await prisma.coinWallet.create({
-        data: {
-          userId: existingAdmin.id,
-          balance: 0,
-        },
-      });
-    }
-
     await seedCmsDefaults();
     await seedDemoData();
     return;
@@ -48,11 +38,6 @@ async function main() {
       email,
       passwordHash,
       role: UserRole.SUPER_ADMIN,
-      coinWallet: {
-        create: {
-          balance: 0,
-        },
-      },
     },
   });
 
@@ -240,9 +225,6 @@ async function seedDemoData() {
     });
   }
 
-  await upsertCoinPackage('Starter Pack', 1000, 100, 10, 1);
-  await upsertCoinPackage('Voter Pack', 2500, 250, 40, 2);
-  await upsertCoinPackage('Super Fan Pack', 5000, 500, 100, 3);
 
   await upsertFaq(
     'How are winners selected?',
@@ -254,31 +236,7 @@ async function seedDemoData() {
     'Yes. TikTok is the supported creator video platform for this competition.',
     2,
   );
-  await upsertFaq(
-    'Are coins cryptocurrency?',
-    'No. Coins are internal NovoRivera platform credits used for voting only.',
-    3,
-  );
-
   await upsertSponsor('Sponsor Placeholder', '', '', 1);
-}
-
-async function upsertCoinPackage(
-  name: string,
-  priceNaira: number,
-  coins: number,
-  bonusCoins: number,
-  sortOrder: number,
-) {
-  const existing = await prisma.coinPackage.findFirst({ where: { name } });
-  const data = { priceNaira, coins, bonusCoins, sortOrder, isActive: true };
-
-  if (existing) {
-    await prisma.coinPackage.update({ where: { id: existing.id }, data });
-    return;
-  }
-
-  await prisma.coinPackage.create({ data: { name, ...data } });
 }
 
 async function upsertFaq(question: string, answer: string, sortOrder: number) {
