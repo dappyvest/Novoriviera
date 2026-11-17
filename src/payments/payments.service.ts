@@ -75,7 +75,7 @@ export class PaymentsService {
         email: dto.email?.toLowerCase() || `voter-${reference}@payments.novorivera.com`,
         amountKobo,
         reference,
-        callbackUrl: this.configService.get<string>('APP_FRONTEND_URL'),
+        callbackUrl: this.configService.get<string>('PAYSTACK_CALLBACK_URL'),
       });
       await this.prisma.paidVotePayment.update({
         where: { id: payment.id },
