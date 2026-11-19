@@ -28,7 +28,7 @@ export class PaymentsService {
 
   async initializePaidVote(dto: InitializePaidVoteDto) {
     this.assertPaymentsEnabled();
-    if (!Number.isSafeInteger(dto.quantity) || dto.quantity < 1 || dto.quantity > 10000) {
+    if (!Number.isSafeInteger(dto.quantity) || dto.quantity < 10 || dto.quantity > 10000) {
       throw new BadRequestException('Vote quantity must be between 1 and 10,000');
     }
 
